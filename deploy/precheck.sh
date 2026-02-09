@@ -35,4 +35,7 @@ while read -r val; do
     fi
 done <<< "$ENV_VALUES"
 
+echo "正在執行 Pre-check: 執行單元測試..."
+npm test -- --forceExit || (echo "❌ 錯誤：單元測試未全數通過。" && exit 1)
+
 echo "Pre-check 已通過。"
