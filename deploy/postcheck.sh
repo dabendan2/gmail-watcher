@@ -42,7 +42,7 @@ if [ -z "$WEBHOOK_URL" ]; then
 fi
 
 echo "正在驗證外部 Webhook 端點: $WEBHOOK_URL"
-curl -sf -X POST -o /dev/null "$WEBHOOK_URL" || (echo "❌ 外部 Webhook 端點驗證失敗: $WEBHOOK_URL" && exit 1)
+curl -sf -X POST -H "Content-Type: application/json" -d '{"message":{"data":"e30="}}' -o /dev/null "$WEBHOOK_URL" || (echo "❌ 外部 Webhook 端點驗證失敗: $WEBHOOK_URL" && exit 1)
 echo "✅ 外部 Webhook 端點驗證通過。"
 
 echo "Post-check 已完成。"
