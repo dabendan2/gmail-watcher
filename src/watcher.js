@@ -110,6 +110,27 @@ class GmailWatcher {
             fs.mkdirSync(this.logDir, { recursive: true });
         }
         fs.appendFileSync(path.join(this.logDir, 'gmail.log'), logEntry);
+
+        // 執行 hooks
+        this.runHooks(data);
+    }
+
+    runHooks(data) {
+        const hooksDir = path.join(__dirname, '../hooks');
+        if (!fs.existsSync(hooksDir)) return;
+
+        const { exec } = require('child_process');
+        fs.readdirSync(hooksDir).forEach(file => {
+            const hookPath = path.join(hooksDir, file);
+            if (fs.statSync(hookPath).isFile()) {
+                const cmd = hookPath.endsWith('.js') ? `node "${hookPath}"` : `"${hookPath}"`;
+                const payload = JSON.stringify(data).replace(/"/g, '\\"');
+                exec(`${cmd} "${payload}"`, (error, stdout, stderr) => {
+                    if (error) console.error(`Hook ${file} 執行失敗: ${error.message}`);
+                    if (stdout) console.log(`Hook ${file} 輸出: ${stdout}`);
+                });
+            }
+        });
     }
 
     handleMessage(message) {
