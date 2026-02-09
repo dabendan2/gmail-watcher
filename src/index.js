@@ -10,6 +10,21 @@ const pubsub = new PubSub({ projectId: process.env.GOOGLE_PROJECT_ID });
 const subscriptionName = process.env.GMAIL_SUBSCRIPTION_NAME;
 const logDir = path.join(__dirname, '../logs');
 
+// 健康檢查服務 (Post-check 使用)
+const http = require('http');
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    if (req.url === '/gmail/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok', gitSha: GIT_SHA }));
+    } else {
+        res.writeHead(404);
+        res.end();
+    }
+}).listen(PORT, () => {
+    console.log(`Health check server listening on port ${PORT}`);
+});
+
 if (!fs.existsSync(logDir)) {
     fs.mkdirSync(logDir);
 }

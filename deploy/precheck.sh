@@ -1,28 +1,34 @@
 #!/bin/bash
-# deploy/precheck.sh
+set -e
 
-echo "Running Pre-check..."
-
-# 1. 偵測硬編碼敏感資訊
-if grep -rE "localhost|http://127.0.0.1" src/ --exclude-dir=node_modules; then
-    echo "Error: Hardcoded localhost found in src/"
-    exit 1
-fi
-
-# 2. 檢查環境變數同步
+# 1. 驗證 .env 檔案存在且所有變數皆有值
+echo "正在執行 Pre-check: 檢查環境變數..."
 if [ ! -f .env ]; then
-    echo "Error: .env file missing"
+    echo "❌ 錯誤：找不到 .env 檔案。"
     exit 1
 fi
 
-# 3. 檢查必要變數
-REQUIRED_VARS=("GOOGLE_PROJECT_ID" "GMAIL_SUBSCRIPTION_NAME")
-for var in "${REQUIRED_VARS[@]}"; do
-    if ! grep -q "$var" .env; then
-        echo "Error: Missing $var in .env"
+# 讀取所有非註解行，並驗證其值不為空
+while read -r line || [ -n "$line" ]; do
+    var_name=$(echo "$line" | cut -d'=' -f1)
+    var_value=$(echo "$line" | cut -d'=' -f2-)
+    if [ -z "$var_value" ]; then
+        echo "❌ 錯誤：變數 $var_name 在 .env 中未定義值。"
         exit 1
     fi
-done
+done <<< "$(grep -v '^#' .env | grep '=')"
 
-echo "Pre-check passed."
-exit 0
+# 2. 檢查硬編碼變數
+echo "正在執行 Pre-check: 檢查硬編碼變數..."
+ENV_VALUES=$(grep -v '^#' .env | grep '=' | cut -d'=' -f2- | grep -v '^$' | sed "s/['\"]//g")
+
+while read -r val; do
+    [ -z "$val" ] && continue
+    if grep -rF "$val" . --exclude=".env" --exclude="credentials.json" --exclude-dir="node_modules" --exclude-dir=".git" --exclude-dir="logs" | grep -q .; then
+        echo "❌ 錯誤：偵測到硬編碼敏感資訊 \"$val\" 存在於檔案中。"
+        grep -rF "$val" . --exclude=".env" --exclude="credentials.json" --exclude-dir="node_modules" --exclude-dir=".git" --exclude-dir="logs"
+        exit 1
+    fi
+done <<< "$ENV_VALUES"
+
+echo "Pre-check 已通過。"

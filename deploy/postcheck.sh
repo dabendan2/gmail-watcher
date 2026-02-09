@@ -1,17 +1,27 @@
 #!/bin/bash
-# deploy/postcheck.sh
+set -e
 
-echo "Running Post-check..."
+[ -f .env ] && export $(grep -v '^#' .env | xargs)
+PORT="${PORT:-3000}"
 
-# 1. 檢查程序是否運行 (簡單邏輯)
-if ! pgrep -f "node src/index.js" > /dev/null; then
-    echo "Warning: gmail-watcher process not detected."
+echo "正在執行 Post-check: 驗證服務狀態..."
+
+# 1. 驗證埠號監聽
+for i in {1..5}; do
+    if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null; then
+        break
+    fi
+    echo "等待服務啟動... ($i/5)"
+    sleep 2
+done
+lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null || (echo "❌ 服務未在埠號 $PORT 啟動" && exit 1)
+
+# 2. 驗證健康檢查端點與 GIT_SHA
+if [ -n "$REACT_APP_GIT_SHA" ]; then
+    echo "正在驗證 Git SHA..."
+    RESPONSE=$(curl -sf "http://localhost:$PORT/gmail/health")
+    echo "$RESPONSE" | grep -q "$REACT_APP_GIT_SHA" || (echo "❌ SHA 不符: $RESPONSE" && exit 1)
+    echo "✅ 健康檢查通過，版本一致。"
 fi
 
-# 2. 檢查日誌目錄與檔案
-if [ ! -d logs ] || [ ! -f logs/gmail.log ]; then
-    echo "Info: Logs directory or gmail.log not initialized yet."
-fi
-
-echo "Post-check complete."
-exit 0
+echo "Post-check 已完成。"
