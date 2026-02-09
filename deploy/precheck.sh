@@ -18,15 +18,16 @@ while read -r line || [ -n "$line" ]; do
     fi
 done <<< "$(grep -v '^#' .env | grep '=')"
 
-# 2. 檢查硬編碼變數
+# 2. 檢查硬編碼變數 (透過 git grep 自動排除 .gitignore 檔案)
 echo "正在執行 Pre-check: 檢查硬編碼變數..."
 ENV_VALUES=$(grep -v '^#' .env | grep '=' | cut -d'=' -f2- | grep -v '^$' | sed "s/['\"]//g")
 
 while read -r val; do
     [ -z "$val" ] && continue
-    if grep -rF "$val" . --exclude=".env" --exclude="credentials.json" --exclude-dir="node_modules" --exclude-dir=".git" --exclude-dir="logs" | grep -q .; then
-        echo "❌ 錯誤：偵測到硬編碼敏感資訊 \"$val\" 存在於檔案中。"
-        grep -rF "$val" . --exclude=".env" --exclude="credentials.json" --exclude-dir="node_modules" --exclude-dir=".git" --exclude-dir="logs"
+    # 僅檢查受 Git 追蹤的檔案，排除 .env
+    if git grep -F "$val" -- . ':(exclude).env' | grep -q .; then
+        echo "❌ 錯誤：偵測到硬編碼敏感資訊 \"$val\" 存在於受追蹤檔案中："
+        git grep -F "$val" -- . ':(exclude).env'
         exit 1
     fi
 done <<< "$ENV_VALUES"
