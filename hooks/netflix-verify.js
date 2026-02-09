@@ -55,7 +55,13 @@ async function run() {
         // 1. 搜尋最新郵件 (重要資訊：如何更新 Netflix 同戶裝置)
         const searchCmd = 'gog gmail messages search "from:netflix.com 如何更新 Netflix 同戶裝置" --max 1 --json';
         const searchOutput = execSync(searchCmd, { encoding: 'utf-8' });
-        const searchData = JSON.parse(searchOutput);
+        let searchData;
+        try {
+            searchData = JSON.parse(searchOutput);
+        } catch (e) {
+            logSync(`gog search 解析失敗，原始輸出: ${searchOutput}`);
+            throw e;
+        }
         const messages = searchData.messages || [];
         
         if (messages.length === 0) {
@@ -67,7 +73,14 @@ async function run() {
         
         // 2. 取得郵件內容並提取連結
         const getCmd = `gog gmail get ${messageId} --json`;
-        const message = JSON.parse(execSync(getCmd, { encoding: 'utf-8' }));
+        const getOutput = execSync(getCmd, { encoding: 'utf-8' });
+        let message;
+        try {
+            message = JSON.parse(getOutput);
+        } catch (e) {
+            logSync(`gog get 解析失敗，原始輸出: ${getOutput}`);
+            throw e;
+        }
         const body = message.body || '';
         
         // 提取連結 (update-primary-location 或包含 cta 的連結)
