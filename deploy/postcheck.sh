@@ -34,10 +34,9 @@ if [ -n "$REACT_APP_GIT_SHA" ]; then
     echo "✅ 健康檢查通過，版本一致。"
 fi
 
-# 3. 驗證健康檢查端點 (使用外部 URL)
-EXTERNAL_HEALTH_URL="https://dabendan.ddns.net/gmail/health"
-echo "正在驗證外部健康檢查端點: $EXTERNAL_HEALTH_URL"
-curl -sf -o /dev/null "$EXTERNAL_HEALTH_URL" || (echo "❌ 外部端點驗證失敗: $EXTERNAL_HEALTH_URL" && exit 1)
-echo "✅ 外部端點驗證通過。"
+# 3. 驗證健康檢查端點 (使用 localhost)
+echo "正在驗證本地健康檢查端點: http://localhost:$PORT/gmail/health"
+curl -sf -o /dev/null "http://localhost:$PORT/gmail/health" || (echo "❌ 本地端點驗證失敗" && exit 1)
+echo "✅ 本地端點驗證通過。"
 
 echo "Post-check 已完成。"
