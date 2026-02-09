@@ -61,7 +61,7 @@ bash deploy/deploy.sh
 - 建議 Hook 自行維護細節日誌於 `logs/` 下。
 
 ## API 端點
-- `POST /gmail/webhook`: 接收 Google Cloud Pub/Sub 的推送訊息。
+- `GET /gmail/health`: 服務健康檢查。
 - `GET /gmail/health`: 健康檢查端點，回傳服務狀態與當前 Git SHA。
 
 ## 日誌說明

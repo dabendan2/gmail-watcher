@@ -35,12 +35,7 @@ if [ -n "$REACT_APP_GIT_SHA" ]; then
 fi
 
 # 3. 驗證健康檢查端點 (使用外部 URL)
-if [ -z "$WEBHOOK_URL" ]; then
-    echo "❌ 錯誤：WEBHOOK_URL 在 .env 中未定義。"
-    exit 1
-fi
-
-EXTERNAL_HEALTH_URL="${WEBHOOK_URL%/webhook}/health"
+EXTERNAL_HEALTH_URL="https://dabendan.ddns.net/gmail/health"
 echo "正在驗證外部健康檢查端點: $EXTERNAL_HEALTH_URL"
 curl -sf -o /dev/null "$EXTERNAL_HEALTH_URL" || (echo "❌ 外部端點驗證失敗: $EXTERNAL_HEALTH_URL" && exit 1)
 echo "✅ 外部端點驗證通過。"
