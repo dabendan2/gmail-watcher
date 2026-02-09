@@ -8,7 +8,7 @@ console.log(`Starting gmail-watcher version: ${GIT_SHA}`);
 
 const pubsub = new PubSub({ projectId: process.env.GOOGLE_PROJECT_ID });
 const subscriptionName = process.env.GMAIL_SUBSCRIPTION_NAME;
-const logDir = path.join(__dirname, '..', process.env.LOG_DIR || 'logs');
+const logDir = path.join(__dirname, '../logs');
 
 if (!fs.existsSync(logDir)) {
     fs.mkdirSync(logDir);
