@@ -2,7 +2,11 @@
 set -e
 
 [ -f .env ] && export $(grep -v '^#' .env | xargs)
-PORT="${PORT:-3000}"
+PORT="${PORT}"
+if [ -z "$PORT" ]; then
+    echo "❌ 錯誤：PORT 在 .env 中未定義。"
+    exit 1
+fi
 
 echo "正在執行 Post-check: 驗證服務狀態..."
 

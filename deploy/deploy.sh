@@ -18,7 +18,7 @@ echo "開始部署 gmail-watcher (SHA: $REACT_APP_GIT_SHA)..."
 echo "正在啟動服務..."
 pgrep -f "src/index.js" | xargs -r kill -9
 npm install --silent
-nohup env PORT="${PORT:-3000}" GIT_SHA="$REACT_APP_GIT_SHA" node src/index.js > logs/server.log 2>&1 &
+nohup env PORT="${PORT}" GIT_SHA="$REACT_APP_GIT_SHA" node src/index.js > logs/server.log 2>&1 &
 sleep 3
 
 # 4. 執行部署後驗證

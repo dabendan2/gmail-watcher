@@ -12,7 +12,11 @@ const logDir = path.join(__dirname, '../logs');
 
 // 健康檢查服務 (Post-check 使用)
 const http = require('http');
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT;
+if (!PORT) {
+    console.error('ERROR: PORT is not defined in environment variables.');
+    process.exit(1);
+}
 http.createServer((req, res) => {
     if (req.url === '/gmail/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
