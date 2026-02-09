@@ -41,6 +41,8 @@ class GmailWatcher {
 
             // Use the authorized OAuth2 client for PubSub as well
             if (this.projectId) {
+                // In Push mode, we don't need a pull subscription listener
+                /* 
                 this.pubsub = new PubSub({
                     projectId: this.projectId,
                     authClient: oAuth2Client
@@ -55,6 +57,7 @@ class GmailWatcher {
                     });
                     console.log(`Listening for Gmail notifications on ${this.subscriptionName}...`);
                 }
+                */
             }
 
             const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
@@ -77,9 +80,23 @@ class GmailWatcher {
             if (req.url === '/gmail/health') {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ status: 'ok', gitSha: this.gitSha }));
-            } else if (req.url === '/gmail/webhook') {
-                res.writeHead(200);
-                res.end('Webhook received');
+            } else if (req.url === '/gmail/webhook' && req.method === 'POST') {
+                let body = '';
+                req.on('data', chunk => { body += chunk.toString(); });
+                req.on('end', () => {
+                    try {
+                        const pushData = JSON.parse(body);
+                        if (pushData.message && pushData.message.data) {
+                            const data = JSON.parse(Buffer.from(pushData.message.data, 'base64').toString());
+                            this.logNotification(data);
+                        }
+                        res.writeHead(200);
+                        res.end('OK');
+                    } catch (e) {
+                        res.writeHead(400);
+                        res.end('Invalid JSON');
+                    }
+                });
             } else {
                 res.writeHead(404);
                 res.end();
@@ -87,15 +104,17 @@ class GmailWatcher {
         });
     }
 
-    handleMessage(message) {
-        const data = JSON.parse(Buffer.from(message.data, 'base64').toString());
+    logNotification(data) {
         const logEntry = `${new Date().toISOString()} - Gmail Notification: ${JSON.stringify(data)}\n`;
-        
         if (!fs.existsSync(this.logDir)) {
             fs.mkdirSync(this.logDir, { recursive: true });
         }
-        
         fs.appendFileSync(path.join(this.logDir, 'gmail.log'), logEntry);
+    }
+
+    handleMessage(message) {
+        const data = JSON.parse(Buffer.from(message.data, 'base64').toString());
+        this.logNotification(data);
         if (typeof message.ack === 'function') {
             message.ack();
         }
