@@ -42,24 +42,19 @@ class GmailWatcher {
             oAuth2Client.setCredentials(token);
 
             // Use the authorized OAuth2 client for PubSub as well
-            if (this.projectId) {
-                // In Push mode, we don't need a pull subscription listener
-                /* 
+            if (this.projectId && this.subscriptionName) {
                 this.pubsub = new PubSub({
                     projectId: this.projectId,
                     authClient: oAuth2Client
                 });
                 
-                if (this.subscriptionName) {
-                    if (this.subscription) await this.subscription.close();
-                    this.subscription = this.pubsub.subscription(this.subscriptionName);
-                    this.subscription.on('message', (msg) => this.handleMessage(msg));
-                    this.subscription.on('error', error => {
-                        console.error(`[PID:${process.pid}] ERROR: ${error.message}`);
-                    });
-                    console.log(`[PID:${process.pid}] Listening for Gmail notifications on ${this.subscriptionName}...`);
-                }
-                */
+                if (this.subscription) await this.subscription.close();
+                this.subscription = this.pubsub.subscription(this.subscriptionName);
+                this.subscription.on('message', (msg) => this.handleMessage(msg));
+                this.subscription.on('error', error => {
+                    console.error(`[PID:${process.pid}] PubSub Subscription ERROR: ${error.message}`);
+                });
+                console.log(`[PID:${process.pid}] Listening for Gmail notifications on subscription: ${this.subscriptionName}...`);
             }
 
             const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
@@ -82,23 +77,6 @@ class GmailWatcher {
             if (req.url === '/gmail/health') {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ status: 'ok', gitSha: this.gitSha }));
-            } else if (req.url === '/gmail/webhook' && req.method === 'POST') {
-                let body = '';
-                req.on('data', chunk => { body += chunk.toString(); });
-                req.on('end', () => {
-                    try {
-                        const pushData = JSON.parse(body);
-                        if (pushData.message && pushData.message.data) {
-                            const data = JSON.parse(Buffer.from(pushData.message.data, 'base64').toString());
-                            this.logNotification(data);
-                        }
-                        res.writeHead(200);
-                        res.end('OK');
-                    } catch (e) {
-                        res.writeHead(400);
-                        res.end('Invalid JSON');
-                    }
-                });
             } else {
                 res.writeHead(404);
                 res.end();

@@ -31,14 +31,13 @@ describe('GmailWatcher Unit Tests', () => {
         });
     });
 
-    test('Webhook returns OK for valid POST', async () => {
+    test('Webhook returns 404', async () => {
         const app = watcher.createApp();
         const response = await request(app)
             .post('/gmail/webhook')
             .send({ message: { data: Buffer.from(JSON.stringify({ historyId: '123' })).toString('base64') } });
         
-        expect(response.status).toBe(200);
-        expect(response.text).toBe('OK');
+        expect(response.status).toBe(404);
     });
 
     test('handleMessage logs the message data and acks', () => {

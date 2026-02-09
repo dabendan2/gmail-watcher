@@ -24,7 +24,7 @@ describe('GmailWatcher Integration Tests', () => {
         }
     });
 
-    test('Full API flow: health and webhook', async () => {
+    test('Full API flow: health and status', async () => {
         const healthRes = await request(app).get('/gmail/health');
         expect(healthRes.status).toBe(200);
         expect(healthRes.body.status).toBe('ok');
@@ -32,8 +32,7 @@ describe('GmailWatcher Integration Tests', () => {
         const webhookRes = await request(app)
             .post('/gmail/webhook')
             .send({ message: { data: Buffer.from(JSON.stringify({ historyId: '123' })).toString('base64') } });
-        expect(webhookRes.status).toBe(200);
-        expect(webhookRes.text).toBe('OK');
+        expect(webhookRes.status).toBe(404);
 
         const nonExistentRes = await request(app).get('/gmail/not-found');
         expect(nonExistentRes.status).toBe(404);
