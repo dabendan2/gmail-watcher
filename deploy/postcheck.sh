@@ -34,15 +34,15 @@ if [ -n "$REACT_APP_GIT_SHA" ]; then
     echo "✅ 健康檢查通過，版本一致。"
 fi
 
-# 3. 驗證 Webhook 端點 (使用外部 URL)
-# 注意：若此處驗證失敗，請先檢查反向代理 (如 Caddyfile) 是否已配置將 /gmail* 導向 localhost:$PORT
+# 3. 驗證健康檢查端點 (使用外部 URL)
 if [ -z "$WEBHOOK_URL" ]; then
     echo "❌ 錯誤：WEBHOOK_URL 在 .env 中未定義。"
     exit 1
 fi
 
-echo "正在驗證外部 Webhook 端點: $WEBHOOK_URL"
-curl -sf -X POST -H "Content-Type: application/json" -d '{"message":{"data":"e30="}}' -o /dev/null "$WEBHOOK_URL" || (echo "❌ 外部 Webhook 端點驗證失敗: $WEBHOOK_URL" && exit 1)
-echo "✅ 外部 Webhook 端點驗證通過。"
+EXTERNAL_HEALTH_URL="${WEBHOOK_URL%/webhook}/health"
+echo "正在驗證外部健康檢查端點: $EXTERNAL_HEALTH_URL"
+curl -sf -o /dev/null "$EXTERNAL_HEALTH_URL" || (echo "❌ 外部端點驗證失敗: $EXTERNAL_HEALTH_URL" && exit 1)
+echo "✅ 外部端點驗證通過。"
 
 echo "Post-check 已完成。"
