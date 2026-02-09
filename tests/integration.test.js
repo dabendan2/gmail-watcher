@@ -29,9 +29,11 @@ describe('GmailWatcher Integration Tests', () => {
         expect(healthRes.status).toBe(200);
         expect(healthRes.body.status).toBe('ok');
 
-        const webhookRes = await request(app).get('/gmail/webhook');
+        const webhookRes = await request(app)
+            .post('/gmail/webhook')
+            .send({ message: { data: Buffer.from(JSON.stringify({ historyId: '123' })).toString('base64') } });
         expect(webhookRes.status).toBe(200);
-        expect(webhookRes.text).toBe('Webhook received');
+        expect(webhookRes.text).toBe('OK');
 
         const nonExistentRes = await request(app).get('/gmail/not-found');
         expect(nonExistentRes.status).toBe(404);

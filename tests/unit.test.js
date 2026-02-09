@@ -31,12 +31,14 @@ describe('GmailWatcher Unit Tests', () => {
         });
     });
 
-    test('Webhook returns Webhook received', async () => {
+    test('Webhook returns OK for valid POST', async () => {
         const app = watcher.createApp();
-        const response = await request(app).get('/gmail/webhook');
+        const response = await request(app)
+            .post('/gmail/webhook')
+            .send({ message: { data: Buffer.from(JSON.stringify({ historyId: '123' })).toString('base64') } });
         
         expect(response.status).toBe(200);
-        expect(response.text).toBe('Webhook received');
+        expect(response.text).toBe('OK');
     });
 
     test('handleMessage logs the message data and acks', () => {

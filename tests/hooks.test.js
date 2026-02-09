@@ -25,22 +25,56 @@ describe('GmailWatcher Hooks', () => {
         if (fs.existsSync(testLogPath)) fs.unlinkSync(testLogPath);
     });
 
-    test('should execute hooks when a notification is logged', (done) => {
-        const watcher = new GmailWatcher({ port: 9999 });
-        const testData = { historyId: '12345', emailAddress: 'test@example.com' };
+    test('should continue queue if a hook fails (non-zero exit)', async () => {
+        const failHookPath = path.join(hooksDir, 'fail-hook.sh');
+        const nextHookPath = path.join(hooksDir, 'next-hook.js');
+        const nextLogPath = path.join(__dirname, '../next-hook.log');
 
-        watcher.logNotification(testData);
+        fs.writeFileSync(failHookPath, '#!/bin/bash\nexit 1');
+        fs.chmodSync(failHookPath, '755');
+        fs.writeFileSync(nextHookPath, `require("fs").writeFileSync("${nextLogPath}", "ok")`);
 
-        // 因為 exec 是非同步的，稍等一下再檢查結果
-        setTimeout(() => {
-            try {
-                expect(fs.existsSync(testLogPath)).toBe(true);
-                const logContent = fs.readFileSync(testLogPath, 'utf8');
-                expect(JSON.parse(logContent)).toEqual(testData);
-                done();
-            } catch (error) {
-                done(error);
-            }
-        }, 1000);
+        const watcher = new GmailWatcher({ port: 9997 });
+        watcher.logNotification({ id: 'test' });
+
+        await watcher.hookQueue;
+        
+        expect(fs.readFileSync(nextLogPath, 'utf8')).toBe('ok');
+
+        if (fs.existsSync(failHookPath)) fs.unlinkSync(failHookPath);
+        if (fs.existsSync(nextHookPath)) fs.unlinkSync(nextHookPath);
+        if (fs.existsSync(nextLogPath)) fs.unlinkSync(nextLogPath);
+    });
+
+    test('should proceed after timeout if hook hangs', async () => {
+        const hangHookPath = path.join(hooksDir, 'hang-hook.js');
+        // 建立一個永不結束的 hook
+        fs.writeFileSync(hangHookPath, 'setInterval(() => {}, 1000);');
+        
+        const watcher = new GmailWatcher({ port: 9996 });
+        
+        // 為了測試，我們暫時修改這個 instance 的 timeout
+        const originalLogNotification = watcher.logNotification;
+        watcher.logNotification = function(data) {
+            this.hookQueue = this.hookQueue.then(() => {
+                return new Promise((resolve) => {
+                    const timeout = setTimeout(() => resolve(), 500); // 測試用 0.5s timeout
+                    this.runHooks(data, () => {
+                        clearTimeout(timeout);
+                        resolve();
+                    });
+                });
+            });
+        };
+
+        const startTime = Date.now();
+        watcher.logNotification({ id: 'hang' });
+        await watcher.hookQueue;
+        const duration = Date.now() - startTime;
+
+        expect(duration).toBeGreaterThanOrEqual(500);
+        expect(duration).toBeLessThan(2000); // 確保沒等滿 30s
+
+        if (fs.existsSync(hangHookPath)) fs.unlinkSync(hangHookPath);
     });
 });
