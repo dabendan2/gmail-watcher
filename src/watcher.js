@@ -14,6 +14,7 @@ class GmailWatcher {
         this.logDir = config.logDir || path.join(__dirname, '../logs');
         this.tokenPath = path.join(__dirname, '../token.json');
         this.credentialsPath = path.join(__dirname, '../credentials.json');
+        this.hookQueue = Promise.resolve();
         
         if (this.projectId) {
             // PubSub usually picks up GOOGLE_APPLICATION_CREDENTIALS automatically.
@@ -27,8 +28,9 @@ class GmailWatcher {
 
     async renewWatch() {
         try {
+            console.log(`[PID:${process.pid}] Renewing Gmail watch...`);
             if (!fs.existsSync(this.tokenPath) || !fs.existsSync(this.credentialsPath)) {
-                console.error('Missing token.json or credentials.json. Run auth.js first.');
+                console.error(`[PID:${process.pid}] Missing token.json or credentials.json. Run auth.js first.`);
                 return;
             }
 
@@ -53,9 +55,9 @@ class GmailWatcher {
                     this.subscription = this.pubsub.subscription(this.subscriptionName);
                     this.subscription.on('message', (msg) => this.handleMessage(msg));
                     this.subscription.on('error', error => {
-                        console.error(`ERROR: ${error.message}`);
+                        console.error(`[PID:${process.pid}] ERROR: ${error.message}`);
                     });
-                    console.log(`Listening for Gmail notifications on ${this.subscriptionName}...`);
+                    console.log(`[PID:${process.pid}] Listening for Gmail notifications on ${this.subscriptionName}...`);
                 }
                 */
             }
@@ -69,9 +71,9 @@ class GmailWatcher {
                 }
             });
 
-            console.log(`Gmail watch renewed. Expiration: ${new Date(parseInt(res.data.expiration)).toISOString()}`);
+            console.log(`[PID:${process.pid}] Gmail watch renewed. Expiration: ${new Date(parseInt(res.data.expiration)).toISOString()}`);
         } catch (error) {
-            console.error('Error renewing Gmail watch:', error.message);
+            console.error(`[PID:${process.pid}] Error renewing Gmail watch:`, error.message);
         }
     }
 
@@ -105,31 +107,61 @@ class GmailWatcher {
     }
 
     logNotification(data) {
-        const logEntry = `${new Date().toISOString()} - Gmail Notification: ${JSON.stringify(data)}\n`;
+        const logEntry = `[PID:${process.pid}] ${new Date().toISOString()} - Gmail Notification: ${JSON.stringify(data)}\n`;
         if (!fs.existsSync(this.logDir)) {
             fs.mkdirSync(this.logDir, { recursive: true });
         }
         fs.appendFileSync(path.join(this.logDir, 'gmail.log'), logEntry);
 
-        // 執行 hooks
-        this.runHooks(data);
+        // 佇列化執行 hooks，確保順序且帶有 timeout
+        this.hookQueue = this.hookQueue.then(() => {
+            return new Promise((resolve) => {
+                const timeout = setTimeout(() => {
+                    console.error(`[PID:${process.pid}] Hooks execution timed out after 3 minutes`);
+                    resolve();
+                }, 3 * 60 * 1000);
+
+                this.runHooks(data, () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+            });
+        });
     }
 
-    runHooks(data) {
+    runHooks(data, callback) {
         const hooksDir = path.join(__dirname, '../hooks');
-        if (!fs.existsSync(hooksDir)) return;
+        if (!fs.existsSync(hooksDir)) {
+            if (callback) callback();
+            return;
+        }
 
         const { exec } = require('child_process');
-        fs.readdirSync(hooksDir).forEach(file => {
+        const files = fs.readdirSync(hooksDir).filter(file => {
             const hookPath = path.join(hooksDir, file);
-            if (fs.statSync(hookPath).isFile()) {
-                const cmd = hookPath.endsWith('.js') ? `node "${hookPath}"` : `"${hookPath}"`;
-                const payload = JSON.stringify(data).replace(/"/g, '\\"');
-                exec(`${cmd} "${payload}"`, (error, stdout, stderr) => {
-                    if (error) console.error(`Hook ${file} 執行失敗: ${error.message}`);
-                    if (stdout) console.log(`Hook ${file} 輸出: ${stdout}`);
-                });
-            }
+            return fs.statSync(hookPath).isFile();
+        });
+
+        if (files.length === 0) {
+            if (callback) callback();
+            return;
+        }
+
+        let completed = 0;
+        files.forEach(file => {
+            const hookPath = path.join(hooksDir, file);
+            const cmd = hookPath.endsWith('.js') ? `node "${hookPath}"` : `"${hookPath}"`;
+            const payload = JSON.stringify(data).replace(/"/g, '\\"');
+            
+            exec(`${cmd} "${payload}"`, (error, stdout, stderr) => {
+                if (error) console.error(`[PID:${process.pid}] Hook ${file} 執行失敗: ${error.message}`);
+                if (stdout) console.log(`[PID:${process.pid}] Hook ${file} 輸出: ${stdout}`);
+                
+                completed++;
+                if (completed === files.length) {
+                    if (callback) callback();
+                }
+            });
         });
     }
 
@@ -147,7 +179,7 @@ class GmailWatcher {
         }
 
         this.server = this.createApp().listen(this.port, () => {
-            console.log(`Health check server listening on port ${this.port}`);
+            console.log(`[PID:${process.pid}] Health check server listening on port ${this.port}`);
         });
 
         // Initial watch renewal (which also initializes PubSub with OAuth2)
@@ -156,7 +188,7 @@ class GmailWatcher {
         // Schedule renewal every 4 days (4 * 24 * 60 * 60 * 1000 ms)
         const FOUR_DAYS_MS = 4 * 24 * 60 * 60 * 1000;
         this.renewalInterval = setInterval(() => {
-            console.log('Running scheduled Gmail watch renewal...');
+            console.log(`[PID:${process.pid}] Running scheduled Gmail watch renewal...`);
             this.renewWatch();
         }, FOUR_DAYS_MS);
     }
@@ -165,6 +197,7 @@ class GmailWatcher {
         if (this.server) this.server.close();
         if (this.subscription) this.subscription.close();
         if (this.renewalInterval) clearInterval(this.renewalInterval);
+        console.log(`[PID:${process.pid}] Watcher stopped.`);
     }
 }
 

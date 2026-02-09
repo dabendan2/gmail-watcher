@@ -13,6 +13,6 @@ watcher.start();
 
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
-    console.log('SIGTERM signal received: closing HTTP server');
+    console.log(`[PID:${process.pid}] SIGTERM signal received: closing HTTP server`);
     watcher.stop();
 });

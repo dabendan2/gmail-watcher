@@ -49,7 +49,76 @@ describe('GmailWatcher Unit Tests', () => {
 
         expect(fs.existsSync(path.join(testLogDir, 'gmail.log'))).toBe(true);
         const logContent = fs.readFileSync(path.join(testLogDir, 'gmail.log'), 'utf8');
+        expect(logContent).toContain(`[PID:${process.pid}]`);
         expect(logContent).toContain('{"historyId":"123"}');
         expect(message.ack).toHaveBeenCalled();
+    });
+
+    test('Hooks are queued and executed sequentially', async () => {
+        const data1 = { historyId: 'first' };
+        const data2 = { historyId: 'second' };
+        
+        // Mock runHooks to simulate delay
+        const originalRunHooks = watcher.runHooks;
+        const executionOrder = [];
+        
+        watcher.runHooks = jest.fn((data, callback) => {
+            setTimeout(() => {
+                executionOrder.push(data.historyId);
+                callback();
+            }, 50);
+        });
+
+        watcher.logNotification(data1);
+        watcher.logNotification(data2);
+
+        await watcher.hookQueue;
+        
+        expect(executionOrder).toEqual(['first', 'second']);
+        expect(watcher.runHooks).toHaveBeenCalledTimes(2);
+        
+        watcher.runHooks = originalRunHooks;
+    });
+
+    test('Queue proceeds after timeout', async () => {
+        const data1 = { historyId: 'timeout' };
+        const data2 = { historyId: 'after-timeout' };
+        
+        // Shorten timeout for test
+        const originalLogNotification = watcher.logNotification;
+        watcher.logNotification = function(data) {
+            const logEntry = `[PID:${process.pid}] ${new Date().toISOString()} - Gmail Notification: ${JSON.stringify(data)}\n`;
+            if (!fs.existsSync(this.logDir)) fs.mkdirSync(this.logDir, { recursive: true });
+            fs.appendFileSync(path.join(this.logDir, 'gmail.log'), logEntry);
+
+            this.hookQueue = this.hookQueue.then(() => {
+                return new Promise((resolve) => {
+                    const timeout = setTimeout(() => {
+                        resolve();
+                    }, 100); // 100ms timeout for test
+
+                    this.runHooks(data, () => {
+                        clearTimeout(timeout);
+                        resolve();
+                    });
+                });
+            });
+        };
+
+        watcher.runHooks = jest.fn((data, callback) => {
+            if (data.historyId === 'timeout') {
+                // Never call callback to trigger timeout
+            } else {
+                callback();
+            }
+        });
+
+        watcher.logNotification(data1);
+        watcher.logNotification(data2);
+
+        await watcher.hookQueue;
+
+        expect(watcher.runHooks).toHaveBeenCalledTimes(2);
+        watcher.logNotification = originalLogNotification;
     });
 });
