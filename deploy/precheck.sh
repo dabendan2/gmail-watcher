@@ -24,7 +24,7 @@ ENV_VALUES=$(grep -v '^#' .env | grep '=' | cut -d'=' -f2- | grep -v '^$' | sed 
 
 while read -r val; do
     [ -z "$val" ] && continue
-    # 僅檢查受 Git 追蹤的檔案，排除 .env
+    # 僅檢查受 Git 追蹤的檔案，排除 .env (若有需要排除的敏感檔案，請務必將其加進 .gitignore)
     if git grep -F "$val" -- . ':(exclude).env' | grep -q .; then
         echo "❌ 錯誤：偵測到硬編碼敏感資訊 \"$val\" 存在於受追蹤檔案中："
         git grep -F "$val" -- . ':(exclude).env'
