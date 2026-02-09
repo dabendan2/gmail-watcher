@@ -16,9 +16,11 @@ class GmailWatcher {
         this.credentialsPath = path.join(__dirname, '../credentials.json');
         
         if (this.projectId) {
+            // PubSub usually picks up GOOGLE_APPLICATION_CREDENTIALS automatically.
+            // If it's an OAuth client secret file, it may fail.
+            // For PubSub, we should ensure the environment variable points to a Service Account key if needed.
             this.pubsub = new PubSub({
-                projectId: this.projectId,
-                keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
+                projectId: this.projectId
             });
         }
     }
