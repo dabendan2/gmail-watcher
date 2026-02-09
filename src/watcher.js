@@ -39,6 +39,24 @@ class GmailWatcher {
             const token = JSON.parse(fs.readFileSync(this.tokenPath));
             oAuth2Client.setCredentials(token);
 
+            // Use the authorized OAuth2 client for PubSub as well
+            if (this.projectId) {
+                this.pubsub = new PubSub({
+                    projectId: this.projectId,
+                    authClient: oAuth2Client
+                });
+                
+                if (this.subscriptionName) {
+                    if (this.subscription) await this.subscription.close();
+                    this.subscription = this.pubsub.subscription(this.subscriptionName);
+                    this.subscription.on('message', (msg) => this.handleMessage(msg));
+                    this.subscription.on('error', error => {
+                        console.error(`ERROR: ${error.message}`);
+                    });
+                    console.log(`Listening for Gmail notifications on ${this.subscriptionName}...`);
+                }
+            }
+
             const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
             const res = await gmail.users.watch({
                 userId: 'me',
@@ -92,7 +110,7 @@ class GmailWatcher {
             console.log(`Health check server listening on port ${this.port}`);
         });
 
-        // Initial watch renewal
+        // Initial watch renewal (which also initializes PubSub with OAuth2)
         await this.renewWatch();
 
         // Schedule renewal every 4 days (4 * 24 * 60 * 60 * 1000 ms)
@@ -101,15 +119,6 @@ class GmailWatcher {
             console.log('Running scheduled Gmail watch renewal...');
             this.renewWatch();
         }, FOUR_DAYS_MS);
-
-        if (this.pubsub && this.subscriptionName) {
-            this.subscription = this.pubsub.subscription(this.subscriptionName);
-            this.subscription.on('message', (msg) => this.handleMessage(msg));
-            this.subscription.on('error', error => {
-                console.error(`ERROR: ${error.message}`);
-            });
-            console.log(`Listening for Gmail notifications on ${this.subscriptionName}...`);
-        }
     }
     
     stop() {
