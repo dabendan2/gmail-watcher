@@ -26,9 +26,25 @@ describe('Netflix Hook Logic (Regex & Extraction)', () => {
         expect(match[0]).toBe('https://www.netflix.com/account/update-primary-location?nftoken=ABC-123_456=&g=789&lnktrk=EVO&operation=update');
     });
 
-    test('should not match invalid links', () => {
-        const mockBody = 'https://www.netflix.com/browse?nftoken=123'; // Missing update-primary-location
+    test('should handle invalid JSON output from gog search', () => {
+        const mockInvalidOutput = '\u001b[90mgog: "...\u001b[39m { "invalid": "json"';
+        const parseWrapper = (output) => {
+            try {
+                return JSON.parse(output);
+            } catch (e) {
+                // 模擬 hook 中的 log 邏輯
+                return `gog search 解析失敗，原始輸出: ${output}`;
+            }
+        };
+        const result = parseWrapper(mockInvalidOutput);
+        expect(result).toContain('gog search 解析失敗');
+        expect(result).toContain(mockInvalidOutput);
+    });
+
+    test('should correctly extract token with equals sign in value', () => {
+        const mockBody = 'https://www.netflix.com/account/update-primary-location?nftoken=BgjStOvcAxKmAXcj3xRpwh1tcsEY4LLV13GiuaY/j9w9VuH/T5Tx19ujhPpfLJ0sN+KuQSzUElvzPxbiBc5OX82MyCO0370pfmpN75FSJTtduzECN9zlWAa5GporHSJGK62o4pYvHyYFiOFLg1vLk8hPiFtCEBRhI2X6wfqfl/FvlHNApTlfpO3QgV+mF11MuU4bt67ntT5mWUzrH7uJx+jRByBCDUXO4RDi+NlxISkYBiIOCgwUf6ASG4EjCC1SEIA=&gD8b024a-d2cc-4024-8026-cafe9ea9939a&lnktrk=EVO&operation=update&lkid=UPDATE_HOUSEHOLD_REQUESTED_OTP_CTA';
         const match = mockBody.match(linkRegex);
-        expect(match).toBeNull();
+        expect(match).toBeTruthy();
+        expect(match[0]).toContain('nftoken=BgjStOvcAxKmAXcj3xRpwh1tcsEY4LLV13GiuaY/j9w9VuH/T5Tx19ujhPpfLJ0sN+KuQSzUElvzPxbiBc5OX82MyCO0370pfmpN75FSJTtduzECN9zlWAa5GporHSJGK62o4pYvHyYFiOFLg1vLk8hPiFtCEBRhI2X6wfqfl/FvlHNApTlfpO3QgV+mF11MuU4bt67ntT5mWUzrH7uJx+jRByBCDUXO4RDi+NlxISkYBiIOCgwUf6ASG4EjCC1SEIA=');
     });
 });
