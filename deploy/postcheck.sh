@@ -35,6 +35,7 @@ if [ -n "$REACT_APP_GIT_SHA" ]; then
 fi
 
 # 3. 驗證 Webhook 端點 (使用外部 URL)
+# 注意：若此處驗證失敗，請先檢查反向代理 (如 Caddyfile) 是否已配置將 /gmail* 導向 localhost:$PORT
 if [ -n "$WEBHOOK_URL" ]; then
     echo "正在驗證外部 Webhook 端點: $WEBHOOK_URL"
     curl -sf -o /dev/null "$WEBHOOK_URL" || (echo "❌ 外部 Webhook 端點驗證失敗: $WEBHOOK_URL" && exit 1)
