@@ -21,6 +21,10 @@ http.createServer((req, res) => {
     if (req.url === '/gmail/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'ok', gitSha: GIT_SHA }));
+    } else if (req.url === '/gmail/webhook') {
+        // Webhook 接收邏輯 (簡化測試用)
+        res.writeHead(200);
+        res.end('Webhook received');
     } else {
         res.writeHead(404);
         res.end();

@@ -28,4 +28,13 @@ if [ -n "$REACT_APP_GIT_SHA" ]; then
     echo "✅ 健康檢查通過，版本一致。"
 fi
 
+# 3. 驗證 Webhook 端點
+if [ -n "$WEBHOOK_URL" ]; then
+    echo "正在驗證 Webhook 端點..."
+    # 從 WEBHOOK_URL 提取路徑 (例如 /gmail/webhook)
+    WEBHOOK_PATH=$(echo "$WEBHOOK_URL" | sed -E 's|https?://[^/]+||')
+    curl -sf -o /dev/null "http://localhost:$PORT$WEBHOOK_PATH" || (echo "❌ Webhook 端點驗證失敗: http://localhost:$PORT$WEBHOOK_PATH" && exit 1)
+    echo "✅ Webhook 端點驗證通過。"
+fi
+
 echo "Post-check 已完成。"
