@@ -26,6 +26,14 @@ cp .env.example .env
 # 編輯 .env 填入正確資訊
 ```
 
+### 4. Git Hooks 設定 (選配)
+若要在每次 `git commit` 時自動執行測試與檢查，請執行：
+```bash
+cp .git/hooks/pre-commit.sample .git/hooks/pre-commit # 若無範本請參考下方說明
+# 或直接建立符號連結
+ln -sf ../../deploy/precheck.sh .git/hooks/pre-commit
+```
+
 ## 執行方式
 
 ### 開發模式
