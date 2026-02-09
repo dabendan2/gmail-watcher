@@ -10,6 +10,12 @@ fi
 
 echo "正在執行 Post-check: 驗證服務狀態..."
 
+# 0. 確保部署後工作區仍是乾淨的
+if [ -n "$(git status --porcelain)" ]; then
+    echo "❌ 錯誤：部署後偵測到未提交的改動，請先 commit。"
+    exit 1
+fi
+
 # 1. 驗證埠號監聽
 for i in {1..5}; do
     if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null; then
