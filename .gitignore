@@ -1,0 +1,17 @@
+# .gitignore for gmail-watcher
+
+# Dependencies
+node_modules/
+
+# Environment variables and secrets
+.env
+credentials.json
+token.json
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
