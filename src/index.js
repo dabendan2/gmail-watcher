@@ -5,6 +5,7 @@ const watcher = new GmailWatcher({
     gitSha: process.env.GIT_SHA || 'development',
     projectId: process.env.GOOGLE_PROJECT_ID,
     subscriptionName: process.env.GMAIL_SUBSCRIPTION_NAME,
+    topicName: process.env.GMAIL_TOPIC_NAME,
     port: process.env.PORT
 });
 

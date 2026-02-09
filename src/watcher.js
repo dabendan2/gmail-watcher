@@ -16,7 +16,10 @@ class GmailWatcher {
         this.credentialsPath = path.join(__dirname, '../credentials.json');
         
         if (this.projectId) {
-            this.pubsub = new PubSub({ projectId: this.projectId });
+            this.pubsub = new PubSub({
+                projectId: this.projectId,
+                keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
+            });
         }
     }
 
