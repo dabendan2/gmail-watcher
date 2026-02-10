@@ -42,11 +42,12 @@ describe('GmailWatcher PubSub Tests', () => {
         }, 100);
     });
 
-    test('should run hooks when notification is received', (done) => {
+    test('should run hooks when notification is received', async () => {
         const hooksDir = path.join(__dirname, '../hooks');
         const testHook = path.join(hooksDir, 'test-hook-check.js');
         
-        // Create a temporary hook that writes a marker file
+        if (!fs.existsSync(testLogDir)) fs.mkdirSync(testLogDir, { recursive: true });
+        
         const markerFile = path.join(testLogDir, 'hook_ran.marker');
         fs.writeFileSync(testHook, `
             const fs = require('fs');
@@ -54,13 +55,22 @@ describe('GmailWatcher PubSub Tests', () => {
         `);
         fs.chmodSync(testHook, '755');
 
-        watcher.logNotification({ id: 'hook-test' });
+        // Mock current hooks folder to be isolated if possible, 
+        // but here we just wait for the promise from runHooks
+        const testWatcher = new GmailWatcher({ logDir: testLogDir });
+        
+        // Mock fs.readdirSync to ONLY return our test hook
+        const originalReaddirSync = fs.readdirSync;
+        jest.spyOn(fs, 'readdirSync').mockImplementation((dir) => {
+            if (dir.includes('hooks')) return ['test-hook-check.js'];
+            return originalReaddirSync(dir);
+        });
 
-        // logNotification returns a promise (this.hookQueue) but we check marker file
-        setTimeout(() => {
-            expect(fs.existsSync(markerFile)).toBe(true);
-            fs.unlinkSync(testHook);
-            done();
-        }, 500);
-    });
+        await testWatcher.runHooks({ historyId: 'hook-test' });
+        
+        expect(fs.existsSync(markerFile)).toBe(true);
+        
+        fs.readdirSync.mockRestore();
+        if (fs.existsSync(testHook)) fs.unlinkSync(testHook);
+    }, 15000);
 });

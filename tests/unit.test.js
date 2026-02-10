@@ -81,11 +81,9 @@ describe('GmailWatcher Unit Tests', () => {
         const originalRunHooks = watcher.runHooks;
         const executionOrder = [];
         
-        watcher.runHooks = jest.fn((data, callback) => {
-            setTimeout(() => {
-                executionOrder.push(data.historyId);
-                callback();
-            }, 50);
+        watcher.runHooks = jest.fn(async (data) => {
+            await new Promise(resolve => setTimeout(resolve, 50));
+            executionOrder.push(data.historyId);
         });
 
         watcher.logNotification(data1);
@@ -110,25 +108,17 @@ describe('GmailWatcher Unit Tests', () => {
             if (!fs.existsSync(this.logDir)) fs.mkdirSync(this.logDir, { recursive: true });
             fs.appendFileSync(path.join(this.logDir, 'gmail.log'), logEntry);
 
-            this.hookQueue = this.hookQueue.then(() => {
-                return new Promise((resolve) => {
-                    const timeout = setTimeout(() => {
-                        resolve();
-                    }, 100); // 100ms timeout for test
-
-                    this.runHooks(data, () => {
-                        clearTimeout(timeout);
-                        resolve();
-                    });
-                });
+            this.hookQueue = this.hookQueue.then(async () => {
+                await Promise.race([
+                    this.runHooks(data),
+                    new Promise(resolve => setTimeout(resolve, 100)) // 100ms timeout for test
+                ]);
             });
         };
 
-        watcher.runHooks = jest.fn((data, callback) => {
+        watcher.runHooks = jest.fn(async (data) => {
             if (data.historyId === 'timeout') {
-                // Never call callback to trigger timeout
-            } else {
-                callback();
+                await new Promise(resolve => setTimeout(resolve, 500)); // Longer than timeout
             }
         });
 

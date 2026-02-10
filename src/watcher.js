@@ -92,55 +92,53 @@ class GmailWatcher {
         fs.appendFileSync(path.join(this.logDir, 'gmail.log'), logEntry);
 
         // 佇列化執行 hooks，確保順序且帶有 timeout
-        this.hookQueue = this.hookQueue.then(() => {
-            return new Promise((resolve) => {
-                const timeout = setTimeout(() => {
-                    console.error(`[PID:${process.pid}] Hooks execution timed out after 3 minutes`);
-                    resolve();
-                }, 3 * 60 * 1000);
+        this.hookQueue = this.hookQueue.then(async () => {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => {
+                console.error(`[PID:${process.pid}] Hooks execution timed out after 3 minutes`);
+                controller.abort();
+            }, 3 * 60 * 1000);
 
-                this.runHooks(data, () => {
-                    clearTimeout(timeout);
-                    resolve();
-                });
-            });
+            try {
+                await this.runHooks(data);
+            } finally {
+                clearTimeout(timeout);
+            }
         });
     }
 
-    runHooks(data, callback) {
+    async runHooks(data) {
         const hooksDir = path.join(__dirname, '../hooks');
         if (!fs.existsSync(hooksDir)) {
-            if (callback) callback();
             return;
         }
 
         const { exec } = require('child_process');
+        const util = require('util');
+        const execPromise = util.promisify(exec);
+        
         const files = fs.readdirSync(hooksDir).filter(file => {
             const hookPath = path.join(hooksDir, file);
             return fs.statSync(hookPath).isFile();
         });
 
         if (files.length === 0) {
-            if (callback) callback();
             return;
         }
 
-        let completed = 0;
-        files.forEach(file => {
+        for (const file of files) {
             const hookPath = path.join(hooksDir, file);
             const cmd = hookPath.endsWith('.js') ? `node "${hookPath}"` : `"${hookPath}"`;
             const payload = JSON.stringify(data).replace(/"/g, '\\"');
             
-            exec(`${cmd} "${payload}"`, (error, stdout, stderr) => {
-                if (error) console.error(`[PID:${process.pid}] Hook ${file} 執行失敗: ${error.message}`);
+            try {
+                const { stdout, stderr } = await execPromise(`${cmd} "${payload}"`);
                 if (stdout) console.log(`[PID:${process.pid}] Hook ${file} 輸出: ${stdout}`);
-                
-                completed++;
-                if (completed === files.length) {
-                    if (callback) callback();
-                }
-            });
-        });
+                if (stderr) console.error(`[PID:${process.pid}] Hook ${file} 錯誤輸出: ${stderr}`);
+            } catch (error) {
+                console.error(`[PID:${process.pid}] Hook ${file} 執行失敗: ${error.message}`);
+            }
+        }
     }
 
     handleMessage(message) {
