@@ -145,6 +145,16 @@ class GmailWatcher {
 
     handleMessage(message) {
         const data = JSON.parse(Buffer.from(message.data, 'base64').toString());
+        
+        // 如果沒有收到預期資訊如 email history id 則 skip
+        if (!data.historyId) {
+            console.log(`[PID:${process.pid}] Skip notification without historyId: ${JSON.stringify(data)}`);
+            if (typeof message.ack === 'function') {
+                message.ack();
+            }
+            return;
+        }
+
         this.logNotification(data);
         if (typeof message.ack === 'function') {
             message.ack();

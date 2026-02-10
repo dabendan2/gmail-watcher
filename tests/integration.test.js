@@ -39,7 +39,7 @@ describe('GmailWatcher Integration Tests', () => {
     });
 
     test('End-to-end logging flow', () => {
-        const testData = { event: 'test_event', timestamp: Date.now() };
+        const testData = { event: 'test_event', timestamp: Date.now(), historyId: '12345' };
         const message = {
             data: Buffer.from(JSON.stringify(testData)).toString('base64'),
             ack: jest.fn()

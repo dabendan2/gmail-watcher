@@ -55,6 +55,24 @@ describe('GmailWatcher Unit Tests', () => {
         expect(message.ack).toHaveBeenCalled();
     });
 
+    test('start and stop methods', async () => {
+        const watcherWithPort = new GmailWatcher({ port: 4001, logDir: testLogDir });
+        watcherWithPort.renewWatch = jest.fn().mockResolvedValue();
+        
+        await watcherWithPort.start();
+        expect(watcherWithPort.server).toBeDefined();
+        expect(watcherWithPort.renewalInterval).toBeDefined();
+        expect(watcherWithPort.renewWatch).toHaveBeenCalled();
+
+        watcherWithPort.stop();
+        expect(watcherWithPort.server.listening).toBe(false);
+    });
+
+    test('start should throw without port', async () => {
+        const watcherNoPort = new GmailWatcher({});
+        await expect(watcherNoPort.start()).rejects.toThrow('PORT is not defined');
+    });
+
     test('Hooks are queued and executed sequentially', async () => {
         const data1 = { historyId: 'first' };
         const data2 = { historyId: 'second' };
