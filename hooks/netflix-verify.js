@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { google } = require('googleapis');
 
 const LOG_DIR = path.join(__dirname, '../logs');
 const LOG_FILE = path.join(LOG_DIR, 'netflix.log');
 const HISTORY_FILE = path.join(LOG_DIR, 'netflix-history.json');
+const TOKEN_PATH = path.join(__dirname, '../token.json');
+const CREDENTIALS_PATH = path.join(__dirname, '../credentials.json');
 
 function logSync(message) {
     const timestamp = new Date().toISOString();
@@ -24,46 +26,41 @@ function saveToHistory(link) {
         history = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf-8'));
     }
     history.push(link);
-    // 保持最近 100 筆紀錄
     if (history.length > 100) history.shift();
     fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2));
 }
 
-/**
- * Netflix Verification Hook (Puppeteer)
- */
-async function run() {
-    if (!fs.existsSync(LOG_DIR)) {
-        fs.mkdirSync(LOG_DIR, { recursive: true });
+async function getGmailClient() {
+    if (!fs.existsSync(TOKEN_PATH) || !fs.existsSync(CREDENTIALS_PATH)) {
+        throw new Error('Missing Gmail credentials');
     }
+    const credentials = JSON.parse(fs.readFileSync(CREDENTIALS_PATH));
+    const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
+    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+    oAuth2Client.setCredentials(JSON.parse(fs.readFileSync(TOKEN_PATH)));
+    return google.gmail({ version: 'v1', auth: oAuth2Client });
+}
 
+async function run() {
+    if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+
+    let browser;
     try {
-        // 檢查 Puppeteer 是否可用
-        let puppeteer;
-        try {
-            puppeteer = require('puppeteer');
-        } catch (e) {
-            logSync(`關鍵錯誤: 無法載入 puppeteer 套件，請執行 npm install puppeteer。詳細資訊: ${e.message}`);
-            return;
-        }
-
         const input = process.argv[2];
         if (!input) return;
 
-        logSync("偵測到郵件通知，啟動 Netflix Puppeteer 驗證程序...");
+        logSync("偵測到郵件通知，啟動 Netflix 驗證程序 (使用 Gmail API)...");
         
-        // 1. 搜尋最新郵件 (重要資訊：如何更新 Netflix 同戶裝置)
-        const searchCmd = 'gog gmail messages search "from:netflix.com 如何更新 Netflix 同戶裝置" --max 1 --json';
-        const searchOutput = execSync(searchCmd, { encoding: 'utf-8' });
-        let searchData;
-        try {
-            searchData = JSON.parse(searchOutput);
-        } catch (e) {
-            logSync(`gog search 解析失敗，原始輸出: ${searchOutput}`);
-            throw e;
-        }
-        const messages = searchData.messages || [];
+        const gmail = await getGmailClient();
         
+        // 1. 搜尋最新郵件
+        const searchRes = await gmail.users.messages.list({
+            userId: 'me',
+            q: 'from:netflix.com 如何更新 Netflix 同戶裝置',
+            maxResults: 1
+        });
+        
+        const messages = searchRes.data.messages || [];
         if (messages.length === 0) {
             logSync("未找到相關郵件");
             return;
@@ -71,19 +68,25 @@ async function run() {
 
         const messageId = messages[0].id;
         
-        // 2. 取得郵件內容並提取連結
-        const getCmd = `gog gmail get ${messageId} --json`;
-        const getOutput = execSync(getCmd, { encoding: 'utf-8' });
-        let message;
-        try {
-            message = JSON.parse(getOutput);
-        } catch (e) {
-            logSync(`gog get 解析失敗，原始輸出: ${getOutput}`);
-            throw e;
-        }
-        const body = message.body || '';
+        // 2. 取得郵件內容
+        const msgRes = await gmail.users.messages.get({
+            userId: 'me',
+            id: messageId
+        });
         
-        // 提取連結 (update-primary-location 或包含 cta 的連結)
+        // 解析 Body (可能在 parts 中或直接在 body.data)
+        let body = '';
+        const payload = msgRes.data.payload;
+        if (payload.parts) {
+            const part = payload.parts.find(p => p.mimeType === 'text/html') || payload.parts[0];
+            if (part && part.body && part.body.data) {
+                body = Buffer.from(part.body.data, 'base64').toString('utf-8');
+            }
+        } else if (payload.body && payload.body.data) {
+            body = Buffer.from(payload.body.data, 'base64').toString('utf-8');
+        }
+
+        // 提取連結
         const linkRegex = /https:\/\/www\.netflix\.com\/[^\s]*update-primary-location[^\s]*nftoken=[^\s\]"]+/;
         const match = body.match(linkRegex);
         
@@ -93,8 +96,6 @@ async function run() {
         }
         
         const verifyLink = match[0];
-        
-        // 檢查是否已處理過
         if (isAlreadyProcessed(verifyLink)) {
             logSync(`連結已處理過，跳過: ${verifyLink}`);
             return;
@@ -102,8 +103,9 @@ async function run() {
         
         logSync(`提取新連結: ${verifyLink}`);
 
-        // 3. 使用 Puppeteer 點擊
-        const browser = await puppeteer.launch({ 
+        // 3. 使用 Puppeteer
+        const puppeteer = require('puppeteer');
+        browser = await puppeteer.launch({ 
             headless: "new",
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
@@ -112,7 +114,6 @@ async function run() {
         logSync("瀏覽器已啟動，導航至連結...");
         await page.goto(verifyLink, { waitUntil: 'networkidle0' });
         
-        // 尋找並點擊「確認更新」或類似按鈕
         const buttonSelector = 'button, a[role="button"]';
         const buttons = await page.$$(buttonSelector);
         let clicked = false;
@@ -129,27 +130,25 @@ async function run() {
 
         if (clicked) {
             logSync("點擊執行，監控頁面回應...");
-            
-            // 使用 Promise.race 同時監控多個可能的結果元素，大幅縮短等待時間
             await Promise.race([
-                page.waitForSelector('[data-uia="upl-success"]', { timeout: 10000 }), // 成功 / 已更新過
-                page.waitForSelector('[data-uia="header"]', { timeout: 10000 }),      // 失敗 (導向登入)
-                page.waitForSelector('[data-uia="upl-error"]', { timeout: 10000 })   // 失敗 (錯誤頁面)
-            ]).catch(() => logSync("等待結果超時，嘗試擷取當前頁面..."));
+                page.waitForSelector('[data-uia="upl-success"]', { timeout: 10000 }),
+                page.waitForSelector('[data-uia="header"]', { timeout: 10000 }),
+                page.waitForSelector('[data-uia="upl-error"]', { timeout: 10000 })
+            ]).catch(() => logSync("等待結果超時"));
 
             const finalContent = await page.evaluate(() => document.body.innerText);
-            logSync(`點擊處理完成。最後頁面內容摘要: ${finalContent.substring(0, 200).replace(/\n/g, ' ')}...`);
+            logSync(`完成。摘要: ${finalContent.substring(0, 200).replace(/\n/g, ' ')}...`);
             saveToHistory(verifyLink);
         } else {
             const pageContent = await page.evaluate(() => document.body.innerText);
-            logSync(`未找到符合條件的確認按鈕。頁面內容摘要: ${pageContent.substring(0, 200).replace(/\n/g, ' ')}...`);
+            logSync(`未找到確認按鈕。摘要: ${pageContent.substring(0, 200).replace(/\n/g, ' ')}...`);
         }
-
-        await browser.close();
-        logSync("程序執行完畢");
 
     } catch (error) {
         logSync(`執行過程發生異常: ${error.stack || error.message}`);
+    } finally {
+        if (browser) await browser.close();
+        logSync("程序執行完畢");
     }
 }
 
