@@ -1,0 +1,1 @@
+require("fs").writeFileSync("/home/ubuntu/.openclaw/workspace/gmail-watcher/next-hook.log", "ok")
