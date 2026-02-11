@@ -101,7 +101,7 @@ async function processMessage(message) {
     // Puppeteer Automation
     let browser;
     try {
-        const puppeteer = require('puppeteer');
+        const puppeteer = require(path.join(process.cwd(), 'node_modules/puppeteer'));
         browser = await puppeteer.launch({ 
             headless: "new",
             args: ['--no-sandbox', '--disable-setuid-sandbox']
