@@ -51,6 +51,7 @@ describe('GmailWatcher Full Flow Verification', () => {
         watcher.lastHistoryId = 'old-history-id';
 
         await watcher.handleMessage(message);
+        await watcher.processQueue;
 
         // Verification 1: fetchFullMessages was called with correct ID
         expect(fetchSpy).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'msg1' })]));

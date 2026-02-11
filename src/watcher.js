@@ -45,6 +45,7 @@ class GmailWatcher {
         );
 
         this.lastHistoryId = null;
+        this.processQueue = Promise.resolve();
 
         if (this.projectId) {
             this.pubsub = new PubSub({ projectId: this.projectId });
@@ -142,43 +143,49 @@ class GmailWatcher {
 
         this.log('Watcher', `Notification received. HistoryId: ${data.historyId}`);
 
-        try {
-            let messageIds = [];
-            
-            if (this.lastHistoryId) {
-                try {
-                    messageIds = await this.gmailClient.getHistory(this.lastHistoryId);
-                } catch (e) {
-                     this.log('Watcher', `History list failed (likely historyId too old), falling back: ${e.message}`);
-                }
-            }
-            
-            this.lastHistoryId = data.historyId;
-
-            if (messageIds.length > 0) {
-                 const uniqueIds = [...new Set(messageIds.map(m => m.id))].map(id => ({ id }));
-                 const fullMessages = await this.gmailClient.fetchFullMessages(uniqueIds);
-                 
-                 // Log subjects for debugging/audit
-                 fullMessages.forEach(msg => {
-                    let subject = 'No Subject';
-                    if (msg.payload && msg.payload.headers) {
-                        const subjectHeader = msg.payload.headers.find(h => h.name === 'Subject');
-                        if (subjectHeader) subject = subjectHeader.value;
+        // Queue message processing to ensure hooks run sequentially
+        this.processQueue = this.processQueue.then(async () => {
+            try {
+                let messageIds = [];
+                
+                if (this.lastHistoryId) {
+                    try {
+                        messageIds = await this.gmailClient.getHistory(this.lastHistoryId);
+                    } catch (e) {
+                         this.log('Watcher', `History list failed (likely historyId too old), falling back: ${e.message}`);
                     }
-                    this.log('Watcher', `Fetched email: ${subject.substring(0, 20)}...`);
-                 });
+                }
+                
+                this.lastHistoryId = data.historyId;
 
-                 await this.hookRunner.run(fullMessages);
-            } else {
-                 this.log('Watcher', 'No new messages found in history update.');
+                if (messageIds.length > 0) {
+                     const uniqueIds = [...new Set(messageIds.map(m => m.id))].map(id => ({ id }));
+                     const fullMessages = await this.gmailClient.fetchFullMessages(uniqueIds);
+                     
+                     // Log subjects for debugging/audit
+                     fullMessages.forEach(msg => {
+                        let subject = 'No Subject';
+                        if (msg.payload && msg.payload.headers) {
+                            const subjectHeader = msg.payload.headers.find(h => h.name === 'Subject');
+                            if (subjectHeader) subject = subjectHeader.value;
+                        }
+                        this.log('Watcher', `Fetched email: ${subject.substring(0, 20)}...`);
+                     });
+
+                     await this.hookRunner.run(fullMessages);
+                } else {
+                     this.log('Watcher', 'No new messages found in history update.');
+                }
+
+            } catch (error) {
+                this.log('Watcher', `Error handling message: ${error.message}`);
             }
+        }).catch(err => {
+             this.log('Watcher', `Process queue error: ${err.message}`);
+        });
 
-        } catch (error) {
-            this.log('Watcher', `Error handling message: ${error.message}`);
-        } finally {
-            message.ack();
-        }
+        // Ack immediately as we have queued the work
+        message.ack();
     }
 
     /**

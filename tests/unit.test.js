@@ -88,7 +88,6 @@ describe('GmailWatcher Unit Tests', () => {
         };
 
         // Mock internal delegates
-        // watcher.gmailClient and watcher.hookRunner are real instances but we can mock their methods
         watcher.gmailClient.getClient = jest.fn().mockResolvedValue({ client: {}, auth: {} });
         watcher.gmailClient.getHistory = jest.fn().mockResolvedValue([{ id: 'msg1' }]);
         watcher.gmailClient.fetchFullMessages = jest.fn().mockResolvedValue([{ id: 'msg1' }]);
@@ -98,6 +97,7 @@ describe('GmailWatcher Unit Tests', () => {
         watcher.lastHistoryId = '100';
 
         await watcher.handleMessage(message);
+        await watcher.processQueue;
 
         expect(message.ack).toHaveBeenCalled();
         expect(watcher.gmailClient.fetchFullMessages).toHaveBeenCalled();
@@ -111,6 +111,7 @@ describe('GmailWatcher Unit Tests', () => {
         };
 
         await watcher.handleMessage(message);
+        // No queue processing expected here as it returns early
 
         expect(message.ack).toHaveBeenCalled();
         expect(fs.appendFileSync).not.toHaveBeenCalledWith(
@@ -126,6 +127,7 @@ describe('GmailWatcher Unit Tests', () => {
         };
         
         await watcher.handleMessage(message);
+        // No queue processing expected here
         
         expect(message.ack).toHaveBeenCalled();
         expect(fs.appendFileSync).toHaveBeenCalledWith(
