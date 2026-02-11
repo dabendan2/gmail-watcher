@@ -1,10 +1,39 @@
 {
   "name": "gmail-watcher",
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "description": "Real-time Gmail monitoring service via Google Cloud Pub/Sub with automated hook support.",
+  "keywords": [
+    "gmail",
+    "monitor",
+    "automation",
+    "pubsub",
+    "google-api",
+    "hooks"
+  ],
+  "author": "天選之人",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dabendan2/gmail-watcher.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dabendan2/gmail-watcher/issues"
+  },
+  "homepage": "https://github.com/dabendan2/gmail-watcher#readme",
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "main": "bin/gmail-watcher.js",
   "scripts": {
     "start": "node bin/gmail-watcher.js service start",
-    "test": "jest"
+    "test": "jest",
+    "lint": "eslint src bin"
   },
   "bin": {
     "gmail-watcher": "bin/gmail-watcher.js"
@@ -17,6 +46,7 @@
     "puppeteer": "^24.37.2"
   },
   "devDependencies": {
+    "eslint": "^10.0.0",
     "jest": "^30.2.0",
     "nock": "^14.0.10",
     "supertest": "^7.2.2"
