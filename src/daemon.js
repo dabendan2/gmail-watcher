@@ -6,7 +6,7 @@ const GmailWatcher = require('./core/watcher');
 const args = process.argv.slice(2);
 const workdirIndex = args.indexOf('--workdir');
 if (workdirIndex === -1 || !args[workdirIndex + 1]) {
-  console.error('Missing --workdir argument');
+  console.error('[System Error] Missing --workdir argument');
   process.exit(1);
 }
 const workdir = args[workdirIndex + 1];
@@ -15,26 +15,51 @@ const workdir = args[workdirIndex + 1];
 const configPath = path.join(workdir, 'config.json');
 const credsPath = path.join(workdir, 'credentials.json');
 const tokenPath = path.join(workdir, 'token.json');
-const logDir = workdir; // Use workdir for logs (service.log is handled by spawn, gmail.log by watcher)
+const logDir = workdir;
 
 // Load Config
 if (!fs.existsSync(configPath)) {
-  console.error('Config file missing');
+  console.error(`[Config Error] Configuration file missing at ${configPath}. Run 'gmail-watcher config set <key> <value>' to initialize.`);
   process.exit(1);
 }
-const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+let config;
+try {
+  config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+} catch (e) {
+  console.error(`[Config Error] Failed to parse config.json: ${e.message}`);
+  process.exit(1);
+}
+
+if (!config.subscription) {
+  console.error("[Config Error] 'subscription' is missing in config. Run 'gmail-watcher config set subscription <name>' first.");
+  process.exit(1);
+}
+if (!config.topic) {
+  console.error("[Config Error] 'topic' is missing in config. Run 'gmail-watcher config set topic <name>' first.");
+  process.exit(1);
+}
 
 // Load Project ID from credentials
 if (!fs.existsSync(credsPath)) {
-  console.error('Credentials file missing');
+  console.error(`[Auth Error] Credentials missing at ${credsPath}. Run 'gmail-watcher auth login --creds <path>' first.`);
   process.exit(1);
 }
-const credentials = JSON.parse(fs.readFileSync(credsPath));
-const projectId = (credentials.installed || credentials.web).project_id;
+
+let projectId;
+try {
+  const credentials = JSON.parse(fs.readFileSync(credsPath));
+  const credsData = credentials.installed || credentials.web;
+  projectId = credsData.project_id;
+  if (!projectId) throw new Error('project_id not found in credentials');
+} catch (e) {
+  console.error(`[Auth Error] Invalid credentials.json: ${e.message}`);
+  process.exit(1);
+}
 
 // Initialize Watcher
 const watcher = new GmailWatcher({
-  gitSha: 'daemon', // Or read from package/git if needed
+  gitSha: 'daemon',
   projectId: projectId,
   subscriptionName: config.subscription,
   topicName: config.topic,
@@ -45,13 +70,13 @@ const watcher = new GmailWatcher({
 });
 
 watcher.start().catch(err => {
-  console.error('Watcher failed to start:', err);
+  console.error(`[Start Error] Watcher failed to initialize: ${err.message}`);
   process.exit(1);
 });
 
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
-  console.log(`[PID:${process.pid}] SIGTERM signal received: closing HTTP server`);
+  console.log(`[PID:${process.pid}] SIGTERM signal received: closing services`);
   watcher.stop();
   process.exit(0);
 });

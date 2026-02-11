@@ -26,20 +26,30 @@ class GmailClient {
     async getClient() {
         if (this.client) return { client: this.client, auth: this.auth };
 
-        if (!fs.existsSync(this.tokenPath) || !fs.existsSync(this.credentialsPath)) {
-            throw new Error('Missing token.json or credentials.json');
+        if (!fs.existsSync(this.credentialsPath)) {
+            throw new Error(`[Auth Error] Credentials missing at ${this.credentialsPath}. Please run 'gmail-watcher auth login --creds <path>' first.`);
         }
 
-        const credentials = JSON.parse(fs.readFileSync(this.credentialsPath));
-        const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
-        this.auth = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-        
-        const token = JSON.parse(fs.readFileSync(this.tokenPath));
-        this.auth.setCredentials(token);
+        if (!fs.existsSync(this.tokenPath)) {
+            throw new Error(`[Auth Error] Token missing at ${this.tokenPath}. Please run 'gmail-watcher auth login' to complete OAuth flow.`);
+        }
 
-        // Ensure token refresh logic is handled or auth is passed to pubsub correctly
-        this.client = google.gmail({ version: 'v1', auth: this.auth });
-        return { client: this.client, auth: this.auth };
+        try {
+            const credentials = JSON.parse(fs.readFileSync(this.credentialsPath));
+            const credsData = credentials.installed || credentials.web;
+            if (!credsData) throw new Error('Invalid credentials format');
+            
+            const { client_secret, client_id, redirect_uris } = credsData;
+            this.auth = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+            
+            const token = JSON.parse(fs.readFileSync(this.tokenPath));
+            this.auth.setCredentials(token);
+
+            this.client = google.gmail({ version: 'v1', auth: this.auth });
+            return { client: this.client, auth: this.auth };
+        } catch (e) {
+            throw new Error(`[Auth Error] Failed to initialize Gmail API: ${e.message}. Try re-running 'gmail-watcher auth login'.`);
+        }
     }
 
     /**
@@ -48,14 +58,21 @@ class GmailClient {
      * @returns {Promise<object>} The watch response data.
      */
     async watch(topicName) {
+        if (!topicName) {
+            throw new Error("[Config Error] 'topic' is not set. Run 'gmail-watcher config set topic <name>' first.");
+        }
         const { client } = await this.getClient();
-        return await client.users.watch({
-            userId: 'me',
-            requestBody: {
-                topicName: topicName,
-                labelIds: ['INBOX']
-            }
-        });
+        try {
+            return await client.users.watch({
+                userId: 'me',
+                requestBody: {
+                    topicName: topicName,
+                    labelIds: ['INBOX']
+                }
+            });
+        } catch (e) {
+            throw new Error(`[Gmail API Error] Watch failed: ${e.message}. Ensure your GCP Topic permissions are set correctly.`);
+        }
     }
 
     /**
@@ -77,7 +94,7 @@ class GmailClient {
                 });
                 messages.push(res.data);
             } catch (e) {
-                console.error(`Failed to fetch message ${msg.id}: ${e.message}`);
+                console.error(`[Gmail API Error] Failed to fetch message ${msg.id}: ${e.message}`);
             }
         }
         return messages;
@@ -109,7 +126,7 @@ class GmailClient {
                 }
             }
         } catch (e) {
-             throw new Error(`History list failed: ${e.message}`);
+             throw new Error(`[Gmail API Error] History list failed: ${e.message}`);
         }
         return messageIds;
     }
@@ -121,12 +138,16 @@ class GmailClient {
      */
     async listUnreadMessages(maxResults = 10) {
         const { client } = await this.getClient();
-        const res = await client.users.messages.list({
-            userId: 'me',
-            q: 'is:unread',
-            maxResults: maxResults
-        });
-        return res.data.messages || [];
+        try {
+            const res = await client.users.messages.list({
+                userId: 'me',
+                q: 'is:unread',
+                maxResults: maxResults
+            });
+            return res.data.messages || [];
+        } catch (e) {
+            throw new Error(`[Gmail API Error] List unread failed: ${e.message}`);
+        }
     }
 }
 
