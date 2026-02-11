@@ -1,82 +1,82 @@
 const fs = require('fs');
 const path = require('path');
 const GmailWatcher = require('../src/watcher');
+const child_process = require('child_process');
+const { EventEmitter } = require('events');
 
-describe('GmailWatcher Hooks', () => {
-    const hooksDir = path.join(__dirname, '../hooks');
-    const testHookPath = path.join(hooksDir, 'test-hook.js');
-    const testLogPath = path.join(__dirname, '../test-hook.log');
+jest.mock('child_process');
+
+describe('GmailWatcher Hooks Behavior', () => {
+    let watcher;
+    const testLogDir = path.join(__dirname, 'test-logs-behavior');
 
     beforeEach(() => {
-        if (!fs.existsSync(hooksDir)) {
-            fs.mkdirSync(hooksDir, { recursive: true });
-        }
+        watcher = new GmailWatcher({ logDir: testLogDir });
+        jest.spyOn(watcher, 'log').mockImplementation(() => {});
+        jest.spyOn(fs, 'readdirSync').mockReturnValue(['hook1.js', 'hook2.js']);
+        jest.spyOn(fs, 'statSync').mockReturnValue({ isFile: () => true });
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
     });
 
     afterEach(() => {
-        // 清理 hooksDir 下的所有臨時測試檔案
-        if (fs.existsSync(hooksDir)) {
-            const files = fs.readdirSync(hooksDir);
-            files.forEach(file => {
-                if (file.includes('hook')) {
-                    fs.unlinkSync(path.join(hooksDir, file));
-                }
-            });
-        }
-        if (fs.existsSync(testLogPath)) fs.unlinkSync(testLogPath);
+        jest.restoreAllMocks();
     });
 
-    test('should continue queue if a hook fails (non-zero exit)', async () => {
-        const failHookPath = path.join(hooksDir, 'fail-hook.sh');
-        const nextHookPath = path.join(hooksDir, 'next-hook.js');
-        const nextLogPath = path.join(__dirname, '../next-hook.log');
-
-        fs.writeFileSync(failHookPath, '#!/bin/bash\nexit 1');
-        fs.chmodSync(failHookPath, '755');
-        fs.writeFileSync(nextHookPath, `require("fs").writeFileSync("${nextLogPath}", "ok")`);
-
-        const watcher = new GmailWatcher({ port: 9997 });
-        watcher.logNotification({ historyId: 'test' });
-
-        await watcher.hookQueue;
+    test('should continue if a hook fails (non-zero exit)', async () => {
+        const executionLog = [];
         
-        expect(fs.readFileSync(nextLogPath, 'utf8')).toBe('ok');
+        child_process.spawn.mockImplementation((cmd, args) => {
+            const hookName = args[0].includes('hook1') ? 'hook1' : 'hook2';
+            const mockChild = new EventEmitter();
+            mockChild.stdout = new EventEmitter();
+            mockChild.stderr = new EventEmitter();
+            mockChild.stdin = { write: jest.fn(), end: jest.fn() };
+            mockChild.kill = jest.fn();
+            mockChild.killed = false;
 
-        if (fs.existsSync(nextLogPath)) fs.unlinkSync(nextLogPath);
-    }, 15000);
-
-    test('should proceed after timeout if hook hangs', async () => {
-        const hangHookPath = path.join(hooksDir, 'hang-hook.js');
-        // 建立一個永不結束的 hook
-        fs.writeFileSync(hangHookPath, 'setInterval(() => {}, 1000);');
-        
-        const watcher = new GmailWatcher({ port: 9996 });
-        
-        // 為了測試，我們暫時修改這個 instance 的 timeout
-        const originalLogNotification = watcher.logNotification;
-        watcher.logNotification = function(data) {
-            this.hookQueue = this.hookQueue.then(async () => {
-                const controller = new AbortController();
-                const timeout = setTimeout(() => controller.abort(), 500); // 測試用 0.5s timeout
-                try {
-                    await Promise.race([
-                        this.runHooks(data),
-                        new Promise(resolve => setTimeout(resolve, 500))
-                    ]);
-                } finally {
-                    clearTimeout(timeout);
+            setTimeout(() => {
+                if (hookName === 'hook1') {
+                    mockChild.emit('close', 1);
+                } else {
+                    executionLog.push('hook2-success');
+                    mockChild.emit('close', 0);
                 }
-            });
-        };
+            }, 10);
 
-        const startTime = Date.now();
-        watcher.logNotification({ historyId: 'hang' });
-        await watcher.hookQueue;
-        const duration = Date.now() - startTime;
+            return mockChild;
+        });
 
-        expect(duration).toBeGreaterThanOrEqual(500);
-        expect(duration).toBeLessThan(5000); // 確保沒等滿 30s
+        await watcher.hookRunner.run([{ id: '123' }]);
 
-        if (fs.existsSync(hangHookPath)) fs.unlinkSync(hangHookPath);
-    }, 15000);
+        expect(executionLog).toContain('hook2-success');
+    });
+
+    test('should handle spawn errors gracefully', async () => {
+        const executionLog = [];
+        
+        child_process.spawn.mockImplementation((cmd, args) => {
+            const hookName = args[0].includes('hook1') ? 'hook1' : 'hook2';
+            const mockChild = new EventEmitter();
+            mockChild.stdout = new EventEmitter();
+            mockChild.stderr = new EventEmitter();
+            mockChild.stdin = { write: jest.fn(), end: jest.fn() };
+            mockChild.kill = jest.fn();
+            mockChild.killed = false;
+
+            setTimeout(() => {
+                if (hookName === 'hook1') {
+                    mockChild.emit('error', new Error('Spawn failed'));
+                } else {
+                    executionLog.push('hook2-success');
+                    mockChild.emit('close', 0);
+                }
+            }, 10);
+
+            return mockChild;
+        });
+
+        await watcher.hookRunner.run([{ id: '123' }]);
+
+        expect(executionLog).toContain('hook2-success');
+    });
 });

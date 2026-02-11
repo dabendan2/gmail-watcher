@@ -1,72 +1,64 @@
 const fs = require('fs');
 const path = require('path');
 const GmailWatcher = require('../src/watcher');
+const child_process = require('child_process');
+const { EventEmitter } = require('events');
+
+jest.mock('child_process');
 
 describe('GmailWatcher Hooks Sequence', () => {
     let watcher;
-    const logDir = path.join(__dirname, 'test-logs');
-    const hooksDir = path.join(__dirname, '../hooks');
+    const testLogDir = path.join(__dirname, 'test-logs-seq');
 
     beforeEach(() => {
-        if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);
-        watcher = new GmailWatcher({ logDir });
+        watcher = new GmailWatcher({ logDir: testLogDir });
+        jest.spyOn(watcher, 'log').mockImplementation(() => {});
+        
+        // Mock file system to simulate hooks
+        jest.spyOn(fs, 'readdirSync').mockReturnValue(['hook1.js', 'hook2.js']);
+        jest.spyOn(fs, 'statSync').mockReturnValue({ isFile: () => true });
+        jest.spyOn(fs, 'existsSync').mockReturnValue(true);
     });
 
     afterEach(() => {
-        if (fs.existsSync(logDir)) {
-            try {
-                fs.rmSync(logDir, { recursive: true, force: true });
-            } catch (e) {
-                // Ignore cleanup errors in tests
-            }
-        }
+        jest.restoreAllMocks();
     });
 
-    test('hooks should execute sequentially (one after another)', async () => {
+    test('hooks should execute sequentially', async () => {
         const executionLog = [];
         
-        // Mock child_process.exec to track execution timing
-        const child_process = require('child_process');
-        const originalExec = child_process.exec;
-        
-        jest.spyOn(child_process, 'exec').mockImplementation((cmd, callback) => {
-            const hookName = cmd.includes('hook1') ? 'hook1' : 'hook2';
+        // Mock spawn implementation
+        child_process.spawn.mockImplementation((cmd, args) => {
+            const hookName = args[0].includes('hook1') ? 'hook1' : 'hook2';
             executionLog.push(`start:${hookName}`);
             
-            // Simulate variable execution time
-            const delay = hookName === 'hook1' ? 100 : 10;
-            
+            const mockChild = new EventEmitter();
+            mockChild.stdout = new EventEmitter();
+            mockChild.stderr = new EventEmitter();
+            mockChild.stdin = { 
+                write: jest.fn(), 
+                end: jest.fn() 
+            };
+            mockChild.kill = jest.fn();
+            mockChild.killed = false;
+
+            // Simulate process finishing after a delay
+            const delay = hookName === 'hook1' ? 50 : 10;
             setTimeout(() => {
                 executionLog.push(`end:${hookName}`);
-                callback(null, 'success', '');
+                mockChild.emit('close', 0);
             }, delay);
+
+            return mockChild;
         });
 
-        // Mock fs.readdirSync to return two fake hooks
-        jest.spyOn(fs, 'readdirSync').mockReturnValue(['hook1.js', 'hook2.js']);
-        jest.spyOn(fs, 'statSync').mockReturnValue({ isFile: () => true });
+        await watcher.hookRunner.run([{ id: '123' }]);
 
-        // Trigger notification
-        const notificationData = { historyId: '123' };
-        
-        // We need to wait for the hookQueue to process
-        watcher.logNotification(notificationData);
-        
-        // Wait for the queue to finish
-        await watcher.hookQueue;
-
-        // If sequential, hook2 should start after hook1 ends
-        // Expected order: start:hook1, end:hook1, start:hook2, end:hook2
-        // If parallel, it might be: start:hook1, start:hook2, end:hook2, end:hook1
         expect(executionLog).toEqual([
             'start:hook1',
             'end:hook1',
             'start:hook2',
             'end:hook2'
         ]);
-
-        child_process.exec.mockRestore();
-        fs.readdirSync.mockRestore();
-        fs.statSync.mockRestore();
     });
 });

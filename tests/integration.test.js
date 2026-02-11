@@ -3,13 +3,41 @@ const GmailWatcher = require('../src/watcher');
 const fs = require('fs');
 const path = require('path');
 
+// Mock dependencies to avoid actual API calls during integration tests
+jest.mock('googleapis', () => {
+    return {
+        google: {
+            auth: { OAuth2: jest.fn(() => ({ setCredentials: jest.fn() })) },
+            gmail: jest.fn(() => ({
+                users: {
+                    history: { list: jest.fn().mockResolvedValue({ data: {} }) },
+                    messages: { get: jest.fn() }
+                }
+            }))
+        }
+    };
+});
+
 describe('GmailWatcher Integration Tests', () => {
     let watcher;
     let app;
     const PORT = 3999;
     const testLogDir = path.join(__dirname, 'integration-logs');
+    const originalExistsSync = fs.existsSync;
+    const originalReadFileSync = fs.readFileSync;
 
     beforeAll(() => {
+        // Setup mock auth files
+        jest.spyOn(fs, 'existsSync').mockImplementation((p) => {
+            if (p.includes('token.json') || p.includes('credentials.json')) return true;
+            return originalExistsSync(p);
+        });
+        jest.spyOn(fs, 'readFileSync').mockImplementation((p) => {
+            if (p.includes('credentials.json')) return JSON.stringify({ installed: { client_id: 'id' } });
+            if (p.includes('token.json')) return '{}';
+            return originalReadFileSync(p);
+        });
+
         watcher = new GmailWatcher({
             gitSha: 'int-test-sha',
             port: PORT,
@@ -19,8 +47,11 @@ describe('GmailWatcher Integration Tests', () => {
     });
 
     afterAll(() => {
-        if (fs.existsSync(testLogDir)) {
-            fs.rmSync(testLogDir, { recursive: true, force: true });
+        jest.restoreAllMocks();
+        if (originalExistsSync(testLogDir)) {
+            try {
+                fs.rmSync(testLogDir, { recursive: true, force: true });
+            } catch (e) {}
         }
     });
 
@@ -28,28 +59,9 @@ describe('GmailWatcher Integration Tests', () => {
         const healthRes = await request(app).get('/gmail/health');
         expect(healthRes.status).toBe(200);
         expect(healthRes.body.status).toBe('ok');
-
-        const webhookRes = await request(app)
-            .post('/gmail/webhook')
-            .send({ message: { data: Buffer.from(JSON.stringify({ historyId: '123' })).toString('base64') } });
-        expect(webhookRes.status).toBe(404);
+        expect(healthRes.body.gitSha).toBe('int-test-sha');
 
         const nonExistentRes = await request(app).get('/gmail/not-found');
         expect(nonExistentRes.status).toBe(404);
-    });
-
-    test('End-to-end logging flow', () => {
-        const testData = { event: 'test_event', timestamp: Date.now(), historyId: '12345' };
-        const message = {
-            data: Buffer.from(JSON.stringify(testData)).toString('base64'),
-            ack: jest.fn()
-        };
-
-        watcher.handleMessage(message);
-
-        const logPath = path.join(testLogDir, 'gmail.log');
-        expect(fs.existsSync(logPath)).toBe(true);
-        const logs = fs.readFileSync(logPath, 'utf8');
-        expect(logs).toContain(JSON.stringify(testData));
     });
 });

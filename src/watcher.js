@@ -1,10 +1,26 @@
+/**
+ * @file watcher.js
+ * @description Main entry point for the Gmail Watcher service. 
+ * Orchestrates Pub/Sub notifications, Gmail API fetching, and Hook execution.
+ */
+
 const { PubSub } = require('@google-cloud/pubsub');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
-const { google } = require('googleapis');
+const GmailClient = require('./GmailClient');
+const HookRunner = require('./HookRunner');
 
 class GmailWatcher {
+    /**
+     * @param {object} config - Configuration object.
+     * @param {string} config.gitSha - Git SHA for health check (optional).
+     * @param {string} config.projectId - Google Cloud Project ID.
+     * @param {string} config.subscriptionName - Pub/Sub subscription name.
+     * @param {string} config.topicName - Pub/Sub topic name (optional).
+     * @param {number} config.port - Port for the health check server.
+     * @param {string} config.logDir - Directory for logs.
+     */
     constructor(config = {}) {
         this.gitSha = config.gitSha || 'development';
         this.projectId = config.projectId;
@@ -14,64 +30,46 @@ class GmailWatcher {
         this.logDir = config.logDir || path.join(__dirname, '../logs');
         this.tokenPath = path.join(__dirname, '../token.json');
         this.credentialsPath = path.join(__dirname, '../credentials.json');
-        this.hookQueue = Promise.resolve();
         
+        // Ensure log directory exists
+        if (!fs.existsSync(this.logDir)) {
+            fs.mkdirSync(this.logDir, { recursive: true });
+        }
+
+        this.gmailClient = new GmailClient(this.tokenPath, this.credentialsPath);
+        
+        this.hookRunner = new HookRunner(
+            path.join(__dirname, '../hooks'),
+            this.logDir,
+            this.log.bind(this)
+        );
+
+        this.lastHistoryId = null;
+
         if (this.projectId) {
-            // PubSub usually picks up GOOGLE_APPLICATION_CREDENTIALS automatically.
-            // If it's an OAuth client secret file, it may fail.
-            // For PubSub, we should ensure the environment variable points to a Service Account key if needed.
-            this.pubsub = new PubSub({
-                projectId: this.projectId
-            });
+            this.pubsub = new PubSub({ projectId: this.projectId });
         }
     }
 
-    async renewWatch() {
+    /**
+     * Logs a message with a timestamp and tag to the gmail.log file.
+     * @param {string} tag - Tag identifying the source (e.g., 'Watcher', 'HookName').
+     * @param {string} message - Message to log.
+     */
+    log(tag, message) {
+        const timestamp = new Date().toISOString();
+        const logEntry = `[PID:${process.pid}] ${timestamp} [${tag}] ${message}\n`;
         try {
-            console.log(`[PID:${process.pid}] Renewing Gmail watch...`);
-            if (!fs.existsSync(this.tokenPath) || !fs.existsSync(this.credentialsPath)) {
-                console.error(`[PID:${process.pid}] Missing token.json or credentials.json. Run auth.js first.`);
-                return;
-            }
-
-            const credentials = JSON.parse(fs.readFileSync(this.credentialsPath));
-            const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
-            const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-            
-            const token = JSON.parse(fs.readFileSync(this.tokenPath));
-            oAuth2Client.setCredentials(token);
-
-            // Use the authorized OAuth2 client for PubSub as well
-            if (this.projectId && this.subscriptionName) {
-                this.pubsub = new PubSub({
-                    projectId: this.projectId,
-                    authClient: oAuth2Client
-                });
-                
-                if (this.subscription) await this.subscription.close();
-                this.subscription = this.pubsub.subscription(this.subscriptionName);
-                this.subscription.on('message', (msg) => this.handleMessage(msg));
-                this.subscription.on('error', error => {
-                    console.error(`[PID:${process.pid}] PubSub Subscription ERROR: ${error.message}`);
-                });
-                console.log(`[PID:${process.pid}] Listening for Gmail notifications on subscription: ${this.subscriptionName}...`);
-            }
-
-            const gmail = google.gmail({ version: 'v1', auth: oAuth2Client });
-            const res = await gmail.users.watch({
-                userId: 'me',
-                requestBody: {
-                    topicName: this.topicName,
-                    labelIds: ['INBOX']
-                }
-            });
-
-            console.log(`[PID:${process.pid}] Gmail watch renewed. Expiration: ${new Date(parseInt(res.data.expiration)).toISOString()}`);
-        } catch (error) {
-            console.error(`[PID:${process.pid}] Error renewing Gmail watch:`, error.message);
+            fs.appendFileSync(path.join(this.logDir, 'gmail.log'), logEntry);
+        } catch (e) {
+            console.error(`Failed to write to log: ${e.message}`);
         }
     }
 
+    /**
+     * Creates the HTTP server for health checks.
+     * @returns {http.Server} The HTTP server instance.
+     */
     createApp() {
         return http.createServer((req, res) => {
             if (req.url === '/gmail/health') {
@@ -84,81 +82,127 @@ class GmailWatcher {
         });
     }
 
-    logNotification(data) {
-        const logEntry = `[PID:${process.pid}] ${new Date().toISOString()} - Gmail Notification: ${JSON.stringify(data)}\n`;
-        if (!fs.existsSync(this.logDir)) {
-            fs.mkdirSync(this.logDir, { recursive: true });
-        }
-        fs.appendFileSync(path.join(this.logDir, 'gmail.log'), logEntry);
+    /**
+     * Renews the Gmail push notification watch.
+     * Also re-initializes the Pub/Sub subscription with updated credentials.
+     */
+    async renewWatch() {
+        try {
+            this.log('Watcher', 'Renewing Gmail watch...');
+            const { auth } = await this.gmailClient.getClient();
 
-        // 佇列化執行 hooks，確保順序且帶有 timeout
-        this.hookQueue = this.hookQueue.then(async () => {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => {
-                console.error(`[PID:${process.pid}] Hooks execution timed out after 3 minutes`);
-                controller.abort();
-            }, 3 * 60 * 1000);
-
-            try {
-                await this.runHooks(data);
-            } finally {
-                clearTimeout(timeout);
+            // Re-init PubSub with auth if needed
+            if (this.projectId && this.subscriptionName) {
+                this.pubsub = new PubSub({
+                    projectId: this.projectId,
+                    authClient: auth
+                });
+                
+                if (this.subscription) {
+                    this.subscription.removeAllListeners();
+                    await this.subscription.close();
+                }
+                
+                this.subscription = this.pubsub.subscription(this.subscriptionName);
+                this.subscription.on('message', (msg) => this.handleMessage(msg));
+                this.subscription.on('error', error => {
+                    this.log('Watcher', `PubSub Subscription ERROR: ${error.message}`);
+                });
+                this.log('Watcher', `Listening for Gmail notifications on subscription: ${this.subscriptionName}...`);
             }
-        });
-    }
 
-    async runHooks(data) {
-        const hooksDir = path.join(__dirname, '../hooks');
-        if (!fs.existsSync(hooksDir)) {
-            return;
-        }
-
-        const { exec } = require('child_process');
-        const util = require('util');
-        const execPromise = util.promisify(exec);
-        
-        const files = fs.readdirSync(hooksDir).filter(file => {
-            const hookPath = path.join(hooksDir, file);
-            return fs.statSync(hookPath).isFile();
-        });
-
-        if (files.length === 0) {
-            return;
-        }
-
-        for (const file of files) {
-            const hookPath = path.join(hooksDir, file);
-            const cmd = hookPath.endsWith('.js') ? `node "${hookPath}"` : `"${hookPath}"`;
-            const payload = JSON.stringify(data).replace(/"/g, '\\"');
-            
-            try {
-                const { stdout, stderr } = await execPromise(`${cmd} "${payload}"`);
-                if (stdout) console.log(`[PID:${process.pid}] Hook ${file} 輸出: ${stdout}`);
-                if (stderr) console.error(`[PID:${process.pid}] Hook ${file} 錯誤輸出: ${stderr}`);
-            } catch (error) {
-                console.error(`[PID:${process.pid}] Hook ${file} 執行失敗: ${error.message}`);
-            }
+            const res = await this.gmailClient.watch(this.topicName);
+            this.lastHistoryId = res.data.historyId;
+            this.log('Watcher', `Gmail watch renewed. HistoryId: ${this.lastHistoryId}. Expiration: ${new Date(parseInt(res.data.expiration)).toISOString()}`);
+        } catch (error) {
+            this.log('Watcher', `Error renewing Gmail watch: ${error.message}`);
         }
     }
 
-    handleMessage(message) {
-        const data = JSON.parse(Buffer.from(message.data, 'base64').toString());
+    /**
+     * Handles incoming Pub/Sub messages.
+     * Parses the message, fetches email content based on history ID, and triggers hooks.
+     * @param {object} message - The Pub/Sub message object.
+     */
+    async handleMessage(message) {
+        let data;
+        try {
+            data = JSON.parse(Buffer.from(message.data, 'base64').toString());
+        } catch (e) {
+            this.log('Watcher', 'Failed to parse PubSub message data');
+            message.ack();
+            return;
+        }
         
-        // 如果沒有收到預期資訊如 email history id 則 skip
         if (!data.historyId) {
-            console.log(`[PID:${process.pid}] Skip notification without historyId: ${JSON.stringify(data)}`);
-            if (typeof message.ack === 'function') {
-                message.ack();
-            }
+            this.log('Watcher', `Skip notification without historyId: ${JSON.stringify(data)}`);
+            message.ack();
             return;
         }
 
-        this.logNotification(data);
-        if (typeof message.ack === 'function') {
+        this.log('Watcher', `Notification received. HistoryId: ${data.historyId}`);
+
+        try {
+            let messageIds = [];
+            
+            if (this.lastHistoryId) {
+                try {
+                    messageIds = await this.gmailClient.getHistory(this.lastHistoryId);
+                } catch (e) {
+                     this.log('Watcher', `History list failed (likely historyId too old), falling back: ${e.message}`);
+                }
+            }
+            
+            this.lastHistoryId = data.historyId;
+
+            if (messageIds.length > 0) {
+                 const uniqueIds = [...new Set(messageIds.map(m => m.id))].map(id => ({ id }));
+                 const fullMessages = await this.gmailClient.fetchFullMessages(uniqueIds);
+                 
+                 // Log subjects for debugging/audit
+                 fullMessages.forEach(msg => {
+                    let subject = 'No Subject';
+                    if (msg.payload && msg.payload.headers) {
+                        const subjectHeader = msg.payload.headers.find(h => h.name === 'Subject');
+                        if (subjectHeader) subject = subjectHeader.value;
+                    }
+                    this.log('Watcher', `Fetched email: ${subject.substring(0, 20)}...`);
+                 });
+
+                 await this.hookRunner.run(fullMessages);
+            } else {
+                 this.log('Watcher', 'No new messages found in history update.');
+            }
+
+        } catch (error) {
+            this.log('Watcher', `Error handling message: ${error.message}`);
+        } finally {
             message.ack();
         }
     }
 
+    /**
+     * Fetches and processes recent unread messages on startup.
+     */
+    async fetchInitialMessages() {
+        this.log('Watcher', 'Fetching initial 10 unread messages...');
+        try {
+            const messageIds = await this.gmailClient.listUnreadMessages(10);
+            if (messageIds.length > 0) {
+                 const fullMessages = await this.gmailClient.fetchFullMessages(messageIds);
+                 await this.hookRunner.run(fullMessages);
+            } else {
+                this.log('Watcher', 'No unread messages found on startup.');
+            }
+        } catch (e) {
+            this.log('Watcher', `Initial fetch failed: ${e.message}`);
+        }
+    }
+
+    /**
+     * Starts the watcher service.
+     * @throws {Error} If PORT is not defined.
+     */
     async start() {
         if (!this.port) {
             throw new Error('PORT is not defined');
@@ -168,20 +212,25 @@ class GmailWatcher {
             console.log(`[PID:${process.pid}] Health check server listening on port ${this.port}`);
         });
 
-        // Initial watch renewal (which also initializes PubSub with OAuth2)
+        await this.fetchInitialMessages();
         await this.renewWatch();
 
-        // Schedule renewal every 4 days (4 * 24 * 60 * 60 * 1000 ms)
+        // Schedule renewal every 4 days
         const FOUR_DAYS_MS = 4 * 24 * 60 * 60 * 1000;
         this.renewalInterval = setInterval(() => {
-            console.log(`[PID:${process.pid}] Running scheduled Gmail watch renewal...`);
             this.renewWatch();
         }, FOUR_DAYS_MS);
     }
     
+    /**
+     * Stops the watcher service and cleans up resources.
+     */
     stop() {
         if (this.server) this.server.close();
-        if (this.subscription) this.subscription.close();
+        if (this.subscription) {
+            this.subscription.removeAllListeners();
+            this.subscription.close();
+        }
         if (this.renewalInterval) clearInterval(this.renewalInterval);
         console.log(`[PID:${process.pid}] Watcher stopped.`);
     }

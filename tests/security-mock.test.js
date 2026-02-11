@@ -24,6 +24,8 @@ describe('GmailWatcher Secure Mock Tests', () => {
         // Setup fs mocks for auth files
         fs.existsSync.mockImplementation((p) => {
             if (p.includes('token.json') || p.includes('credentials.json')) return true;
+            // Allow logging directory
+            if (p.includes('/mock/logs')) return true;
             return false;
         });
         fs.readFileSync.mockImplementation((p) => {
@@ -39,8 +41,11 @@ describe('GmailWatcher Secure Mock Tests', () => {
             if (p.includes('token.json')) return JSON.stringify({ access_token: 'abc' });
             return '';
         });
+        fs.mkdirSync.mockImplementation(() => {});
 
         watcher = new GmailWatcher(mockConfig);
+        // Spy on internal logger to suppress console/fs
+        jest.spyOn(watcher, 'log').mockImplementation(() => {});
     });
 
     test('renewWatch should initialize PubSub and Gmail watch with OAuth2', async () => {
@@ -51,7 +56,8 @@ describe('GmailWatcher Secure Mock Tests', () => {
 
         const mockSubscription = {
             on: jest.fn(),
-            close: jest.fn().mockResolvedValue()
+            close: jest.fn().mockResolvedValue(),
+            removeAllListeners: jest.fn()
         };
         const mockPubSubInstance = {
             subscription: jest.fn().mockReturnValue(mockSubscription)
@@ -93,11 +99,9 @@ describe('GmailWatcher Secure Mock Tests', () => {
 
     test('renewWatch should handle missing credentials gracefully', async () => {
         fs.existsSync.mockReturnValue(false); // Simulate missing files
-        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
         
-        await watcher.renewWatch();
+        await expect(watcher.renewWatch()).resolves.not.toThrow();
         
-        expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Missing token.json or credentials.json'));
-        consoleErrorSpy.mockRestore();
+        expect(watcher.log).toHaveBeenCalledWith('Watcher', expect.stringContaining('Error renewing Gmail watch'));
     });
 });
