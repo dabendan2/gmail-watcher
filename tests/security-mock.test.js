@@ -1,6 +1,6 @@
 const { PubSub } = require('@google-cloud/pubsub');
 const { google } = require('googleapis');
-const GmailWatcher = require('../src/watcher');
+const GmailWatcher = require('../src/core/watcher');
 const fs = require('fs');
 const path = require('path');
 

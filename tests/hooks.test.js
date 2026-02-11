@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const GmailWatcher = require('../src/watcher');
+const GmailWatcher = require('../src/core/watcher');
 const child_process = require('child_process');
 const { EventEmitter } = require('events');
 

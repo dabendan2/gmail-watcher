@@ -1,5 +1,5 @@
 const request = require('supertest');
-const GmailWatcher = require('../src/watcher');
+const GmailWatcher = require('../src/core/watcher');
 const fs = require('fs');
 const path = require('path');
 const child_process = require('child_process');

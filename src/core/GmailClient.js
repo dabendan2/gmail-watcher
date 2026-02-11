@@ -37,6 +37,7 @@ class GmailClient {
         const token = JSON.parse(fs.readFileSync(this.tokenPath));
         this.auth.setCredentials(token);
 
+        // Ensure token refresh logic is handled or auth is passed to pubsub correctly
         this.client = google.gmail({ version: 'v1', auth: this.auth });
         return { client: this.client, auth: this.auth };
     }

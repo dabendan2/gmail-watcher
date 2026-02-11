@@ -6,8 +6,12 @@
     "start": "node src/index.js",
     "test": "jest"
   },
+  "bin": {
+    "gmail-watcher": "bin/gmail-watcher.js"
+  },
   "dependencies": {
     "@google-cloud/pubsub": "^4.0.0",
+    "commander": "^14.0.3",
     "dotenv": "^16.0.0",
     "googleapis": "^126.0.0",
     "puppeteer": "^24.37.2"

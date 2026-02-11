@@ -1,4 +1,4 @@
-const GmailWatcher = require('./watcher');
+const GmailWatcher = require('./core/watcher');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
@@ -19,7 +19,10 @@ const watcher = new GmailWatcher({
     port: process.env.PORT
 });
 
-watcher.start();
+watcher.start().catch(err => {
+    console.error(`[FATAL] Failed to start watcher: ${err.message}`);
+    process.exit(1);
+});
 
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
