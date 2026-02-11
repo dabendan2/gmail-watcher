@@ -57,6 +57,17 @@ class GmailWatcher {
       await this.gmail.watch(this.topicName);
       this.log('Watcher', `Gmail watch set for topic: ${this.topicName}`);
 
+      // 1.5. Process initial unread messages (top 10)
+      this.log('Watcher', 'Fetching initial unread messages...');
+      const unreadIds = await this.gmail.listUnreadMessages(10);
+      if (unreadIds.length > 0) {
+        this.log('Watcher', `Found ${unreadIds.length} initial unread messages.`);
+        const fullMessages = await this.gmail.fetchFullMessages(unreadIds);
+        await this.hookRunner.run(fullMessages);
+      } else {
+        this.log('Watcher', 'No initial unread messages found.');
+      }
+
       // 2. Setup Pub/Sub Subscription
       this.subscription = this.pubsub.subscription(this.subscriptionName);
       
