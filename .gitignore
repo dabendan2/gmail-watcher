@@ -12,6 +12,9 @@ token.json
 logs/
 *.log
 
+# Coverage reports
+coverage/
+
 # OS files
 .DS_Store
 Thumbs.db

@@ -1,70 +1,99 @@
 # Gmail Watcher
 
-基於 Google Cloud Pub/Sub 的 Gmail 即時監控服務，支援自動化 Hook 擴展。
+基於 Google Cloud Pub/Sub 的 Gmail 即時監控服務，支援自動化 Hook 擴展與 Puppeteer 自動化流程。
 
-## 核心設計
-- **即時性**：透過 Google Cloud Pub/Sub Push Webhook 接收 Gmail 通知。
-- **擴展性**：採用 Hook 模式，收到通知後自動執行 `hooks/` 目錄下的所有腳本。
-- **安全性**：內建 Pre-check 檢查敏感資訊硬編碼，Post-check 驗證部署狀態。
+## 系統架構
+
+本專案採用模組化設計，主要由以下元件組成：
+
+- **Watcher (`src/watcher.js`)**：核心協調者。負責管理 Pub/Sub 訂閱生命週期、處理訊息佇列 (`processQueue`) 以確保循序執行，並協調 Gmail API 與 Hooks。
+- **GmailClient (`src/GmailClient.js`)**：封裝 Google API 交互邏輯，包括認證、Watch Renewal、History 查詢與完整訊息獲取。
+- **HookRunner (`src/HookRunner.js`)**：負責子進程管理。將獲取的郵件內容通過 `stdin` 傳遞給 Hooks，並統一收集 `stdout`/`stderr` 至主日誌。
+
+## 主要功能
+
+1.  **即時監控**：透過 Google Cloud Pub/Sub Push/Pull 接收 Gmail 變更通知。
+2.  **自動化處理**：
+    *   **啟動檢查**：服務啟動時自動抓取最近 10 封未讀郵件。
+    *   **即時觸發**：收到通知後，自動查詢 History 變更並提取完整郵件內容。
+3.  **Hooks 機制**：
+    *   放置於 `hooks/` 目錄下的腳本會被自動執行。
+    *   **資料流**：郵件內容 (JSON Array) 經由 **Stdin** 傳入 Hook。
+    *   **日誌**：Hooks 的輸出由 Watcher 統一加上標籤 (Tag) 後寫入 `logs/gmail.log`。
+4.  **Netflix 自動驗證** (`hooks/netflix-verify.js`)：
+    *   自動偵測 Netflix 同戶裝置驗證郵件。
+    *   使用 Puppeteer 無頭瀏覽器自動點擊確認連結。
+    *   智慧偵測連結失效（如導向登入頁面）並記錄日誌。
 
 ## 安裝與設定
 
 ### 1. 環境需求
 - Node.js v18+
-- [gog CLI](https://github.com/openclaw/gog) (用於 Hook 內的郵件操作)
+- Google Cloud Project (啟用 Gmail API, Pub/Sub API)
 
 ### 2. 認證設定
-1. 在 [Google Cloud Console](https://console.cloud.google.com/) 建立 OAuth 2.0 用戶端 ID。
-2. 下載 JSON 認證檔案，更名為 `credentials.json` 並放置於專案根目錄。
-3. 執行認證指令：`node src/auth.js`。
-4. 點擊產生的網頁連結進行授權，將授權碼貼回後會生成 `token.json`。
+1. 在 [Google Cloud Console](https://console.cloud.google.com/) 下載 OAuth 2.0 憑證，儲存為 `credentials.json`。
+2. 執行認證腳本：
+   ```bash
+   node src/auth.js
+   ```
+3. 跟隨指示完成授權，系統將生成 `token.json`。
+   *注意：Scope 包含 `https://www.googleapis.com/auth/gmail.modify` 以支援自動化操作。*
 
-### 3. 環境設定
-請參考專案根目錄下的 `.env.example` 檔案建立您的 `.env`，並確保所有變數皆已正確填寫。
-```bash
-cp .env.example .env
-# 編輯 .env 填入正確資訊
+### 3. 環境變數
+複製 `.env.example` 並設定：
+```env
+PORT=3000
+PROJECT_ID=your-project-id
+SUBSCRIPTION_NAME=your-subscription-id
 ```
 
-### 4. Git Hooks 設定 (選配)
-若要在每次 `git commit` 時自動執行測試與檢查，請執行：
-```bash
-cp .git/hooks/pre-commit.sample .git/hooks/pre-commit # 若無範本請參考下方說明
-# 或直接建立符號連結
-ln -sf ../../deploy/precheck.sh .git/hooks/pre-commit
-```
+## 執行與部署
 
-## 執行方式
-
-### 開發模式
+### 本地執行
 ```bash
 npm install
 npm start
 ```
 
 ### 自動化部署
-執行部署腳本，將自動完成 Pre-check、重啟服務與 Post-check 驗證：
+使用部署腳本進行 Pre-check (測試)、服務重啟與 Post-check (健康檢查)：
 ```bash
 bash deploy/deploy.sh
 ```
 
-## Hook 擴展介面
+## Hook 開發指南
 
-任何放置在 `hooks/` 目錄下的可執行檔案（`.js`, `.sh` 等）都會在收到通知時被觸發。
+Hook 應為可執行腳本 (如 Node.js)，規範如下：
 
-### 輸入 (Arguments)
-- **$1**: Gmail 通知的原始 JSON 字串。
-  - 格式：`{"emailAddress": "...", "historyId": 12345}`
+1.  **輸入**：從 `stdin` 讀取 JSON 字串。
+    ```json
+    [
+      {
+        "id": "msg_id",
+        "snippet": "email snippet...",
+        "payload": { ... }
+      }
+    ]
+    ```
+2.  **輸出**：
+    *   正常日誌請輸出至 `stdout`。
+    *   錯誤日誌請輸出至 `stderr`。
+    *   Watcher 會自動加上 `[HookName]` 前綴並記錄。
+3.  **環境變數**：
+    *   `LOG_DIR`: 指向統一的日誌目錄路徑。
 
-### 輸出 (Logging)
-- 服務會捕捉 Hook 的 `stdout` 並記錄至 `logs/server.log`。
-- 建議 Hook 自行維護細節日誌於 `logs/` 下。
+## 測試
 
-## API 端點
-- `GET /gmail/health`: 服務健康檢查。
-- `GET /gmail/health`: 健康檢查端點，回傳服務狀態與當前 Git SHA。
+專案包含完整的測試套件 (Jest)：
+- **Unit Tests**: 驗證各模組邏輯。
+- **Integration Tests**: 驗證 API 端點與完整流程。
+- **Concurrency Tests**: 確保訊息處理的循序性。
 
-## 日誌說明
-- `logs/server.log`: 服務啟動與 Hook 執行狀況。
-- `logs/gmail.log`: 接收到的通知歷史紀錄 (含 PID)。
-- `logs/netflix.log`: Netflix 驗證 Hook 的詳細執行日誌。
+執行測試：
+```bash
+npm test
+```
+
+## 日誌位置
+- `logs/gmail.log`: 包含 Watcher 系統日誌、Pub/Sub 事件與所有 Hooks 的執行輸出。
