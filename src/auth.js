@@ -5,6 +5,7 @@ const { google } = require('googleapis');
 
 const SCOPES = [
     'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/pubsub'
 ];
 const TOKEN_PATH = path.join(__dirname, '../token.json');
