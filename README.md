@@ -40,60 +40,34 @@
 3. 跟隨指示完成授權，系統將生成 `token.json`。
    *注意：Scope 包含 `https://www.googleapis.com/auth/gmail.modify` 以支援自動化操作。*
 
-### 3. 環境變數
-複製 `.env.example` 並設定：
-```env
-PORT=3000
-GMAIL_TOPIC_NAME=projects/your-project-id/topics/your-topic-name
-GMAIL_SUBSCRIPTION_NAME=your-subscription-name
-```
-
-## 執行與部署
-
-### 本地執行
-```bash
-npm install
-npm start
-```
-
-### 自動化部署
-使用部署腳本進行 Pre-check (測試)、服務重啟與 Post-check (健康檢查)：
+### 4. 部署與同步
+使用部署腳本自動完成 Pre-check、服務重啟與 Hooks 同步：
 ```bash
 bash deploy/deploy.sh
 ```
+部署時會自動將專案目錄下的 `hooks/` 同步至工作區 (預設為 `~/.gmail-watcher/hooks/`)。
 
-## Hook 開發指南
+## Hooks 擴展指南
 
-Hook 應為可執行腳本 (如 Node.js)，規範如下：
+您可以自定義 Hook 來處理特定郵件：
 
-1.  **輸入**：從 `stdin` 讀取 JSON 字串。
-    ```json
-    [
-      {
-        "id": "msg_id",
-        "snippet": "email snippet...",
-        "payload": { ... }
-      }
-    ]
+1.  **建立腳本**：在 `hooks/` 目錄下建立 `.js` 或其他可執行檔案。
+2.  **實作邏輯**：
+    *   從 **Stdin** 讀取郵件內容（JSON 陣列）。
+    *   將日誌輸出至 **Stdout**，錯誤輸出至 **Stderr**。
+3.  **依賴套件**：若 Hook 需要特定 npm 套件（如 Puppeteer），請確保已在專案根目錄安裝並在 Hook 中使用絕對路徑或相對專案根目錄的路徑引用。
+4.  **範例樣板**：
+    ```javascript
+    #!/usr/bin/env node
+    process.stdin.on('data', (data) => {
+      const messages = JSON.parse(data);
+      messages.forEach(msg => {
+        console.log(`處理郵件: ${msg.id}`);
+        // 您的邏輯...
+      });
+    });
     ```
-2.  **輸出**：
-    *   正常日誌請輸出至 `stdout`。
-    *   錯誤日誌請輸出至 `stderr`。
-    *   Watcher 會自動加上 `[HookName]` 前綴並記錄。
-3.  **環境變數**：
-    *   `LOG_DIR`: 指向統一的日誌目錄路徑。
-
-## 測試
-
-專案包含完整的測試套件 (Jest)：
-- **Unit Tests**: 驗證各模組邏輯。
-- **Integration Tests**: 驗證 API 端點與完整流程。
-- **Concurrency Tests**: 確保訊息處理的循序性。
-
-執行測試：
-```bash
-npm test
-```
+5.  **部署**：執行 `bash deploy/deploy.sh`，腳本會自動同步並設定執行權限。
 
 ## 日誌位置
 - `logs/gmail.log`: 包含 Watcher 系統日誌、Pub/Sub 事件與所有 Hooks 的執行輸出。

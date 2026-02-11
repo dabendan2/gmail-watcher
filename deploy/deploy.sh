@@ -30,6 +30,16 @@ npm install --silent
 
 # 啟動新服務
 echo "正在啟動服務..."
+
+# 自動同步 Hooks 到工作區
+WORK_DIR=$(gmail-watcher config list | grep -oP '"workdir":\s*"\K[^"]+' || echo "$HOME/.gmail-watcher")
+if [ -d "hooks" ]; then
+    echo "同步 Hooks 到 $WORK_DIR/hooks..."
+    mkdir -p "$WORK_DIR/hooks"
+    cp -r hooks/* "$WORK_DIR/hooks/"
+    chmod +x "$WORK_DIR/hooks"/*.js 2>/dev/null || true
+fi
+
 # 使用 -d (daemon) 模式啟動
 gmail-watcher service start -d
 
