@@ -1,9 +1,9 @@
 {
   "name": "gmail-watcher",
   "version": "1.0.0",
-  "main": "src/index.js",
+  "main": "bin/gmail-watcher.js",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node bin/gmail-watcher.js service start",
     "test": "jest"
   },
   "bin": {
