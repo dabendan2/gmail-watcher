@@ -16,17 +16,22 @@
    - 在 **APIs & Services > Credentials** 建立 **OAuth client ID (Desktop app)** 並下載 JSON 檔案。
 
 ### 2. 初始化與啟動
-```bash
-# 設定 Pub/Sub 參數
-gmail-watcher config set topic "你的Topic路徑"
-gmail-watcher config set subscription "你的Sub路徑"
-
-# 匯入憑證並登入 (請依照瀏覽器指示完成授權)
-gmail-watcher auth login --creds path/to/credentials.json
-
-# 啟動服務 (背景執行)
-gmail-watcher service start -d
-```
+1.  **設定 Pub/Sub 參數**：
+    ```bash
+    gmail-watcher config set topic "你的Topic路徑"
+    gmail-watcher config set subscription "你的Sub路徑"
+    ```
+2.  **匯入憑證並登入**：
+    ```bash
+    gmail-watcher auth login --creds path/to/credentials.json
+    ```
+    *   **複製網址**：從終端機複製以 `https://accounts.google.com/...` 開頭的完整網址至瀏覽器。
+    *   **忽略警告**：看到「Google 尚未驗證」時，點擊「進階」並選擇「前往專案（不安全）」。
+    *   **複製回傳網址**：授權後若瀏覽器導向 `localhost` 顯示「無法連線」屬正常現象。請**複製瀏覽器網址列的完整 URL**，貼回終端機提示處。
+3.  **啟動服務**：
+    ```bash
+    gmail-watcher service start -d
+    ```
 
 ---
 
@@ -78,7 +83,18 @@ process.stdin.on('data', (data) => {
   try {
     const messages = JSON.parse(data);
     messages.forEach(msg => {
-      console.log(`[Processing] ID: ${msg.id} | Snippet: ${msg.snippet}`);
+      // msg 物件包含 Gmail API messages.get 回傳的完整資料
+      // 常用欄位如下：
+      const id = msg.id;
+      const threadId = msg.threadId;
+      const snippet = msg.snippet; // 郵件內文摘要
+      
+      // 獲取標題與寄件者 (從 payload.headers)
+      const headers = msg.payload.headers;
+      const subject = headers.find(h => h.name === 'Subject')?.value;
+      const from = headers.find(h => h.name === 'From')?.value;
+
+      console.log(`[Processing] From: ${from} | Subject: ${subject}`);
       // 在此實作您的自動化邏輯
     });
   } catch (e) {
