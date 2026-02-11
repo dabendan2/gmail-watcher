@@ -24,7 +24,7 @@ module.exports = (program) => {
           process.kill(oldPid, 0);
           console.error(`Error: Service is already running (PID: ${oldPid})`);
           process.exit(1);
-        } catch (e) {
+        } catch (err) {
           fs.unlinkSync(pidFile);
         }
       }
@@ -96,8 +96,7 @@ module.exports = (program) => {
         try {
           process.kill(pid, 0);
           console.log(`Service is running (PID: ${pid})`);
-        } catch (e) {
-          console.log('Service is not running (stale PID file)');
+        } catch (err) {
           fs.unlinkSync(pidFile);
         }
       } else {
@@ -120,7 +119,7 @@ module.exports = (program) => {
           process.kill(pid, 'SIGTERM');
           console.log(`Service stopped (PID: ${pid})`);
           fs.unlinkSync(pidFile);
-        } catch (e) {
+        } catch (err) {
           console.log(`Failed to stop service (PID: ${pid})`);
         }
       } else {

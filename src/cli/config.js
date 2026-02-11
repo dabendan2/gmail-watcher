@@ -18,7 +18,7 @@ module.exports = (program) => {
       if (fs.existsSync(configPath)) {
         try {
           data = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        } catch (e) {
+        } catch (err) {
           // ignore parsing error, overwrite
         }
       }

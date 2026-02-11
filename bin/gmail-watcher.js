@@ -17,7 +17,7 @@ program.on('option:version', () => {
   try {
     const gitSha = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
     console.log(gitSha);
-  } catch (e) {
+  } catch (err) {
     console.log('unknown');
   }
   process.exit(0);
