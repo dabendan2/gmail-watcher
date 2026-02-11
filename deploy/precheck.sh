@@ -3,11 +3,14 @@ set -e
 
 echo "執行 Pre-check..."
 
-# 1. 驗證 credentials.json 存在
-if [ ! -f credentials.json ]; then
-    echo "❌ 錯誤：找不到 credentials.json 檔案。"
-    echo "請確保已放置 GCP 憑證檔案。"
+# 1. 檢查基本依賴
+if ! command -v node &> /dev/null; then
+    echo "❌ 錯誤：未安裝 Node.js"
     exit 1
 fi
+
+# 2. 語法檢查 (Linting / Basic syntax check)
+echo "檢查程式碼語法..."
+find src -name "*.js" | xargs -n 1 node -c
 
 echo "Pre-check 已通過。"
