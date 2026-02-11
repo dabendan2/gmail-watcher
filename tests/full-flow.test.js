@@ -2,9 +2,11 @@ const GmailWatcher = require('../src/core/watcher');
 const fs = require('fs');
 const path = require('path');
 
+const os = require('os');
+
 describe('GmailWatcher Full Flow Verification', () => {
     let watcher;
-    const testLogDir = path.join(__dirname, 'flow-test-logs');
+    const testLogDir = path.join(os.tmpdir(), `flow-test-logs-${Date.now()}`);
 
     beforeEach(() => {
         if (!fs.existsSync(testLogDir)) fs.mkdirSync(testLogDir);

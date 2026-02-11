@@ -2,12 +2,13 @@ const GmailWatcher = require('../src/core/watcher');
 const { PubSub } = require('@google-cloud/pubsub');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 jest.mock('@google-cloud/pubsub');
 jest.mock('../src/core/GmailClient');
 
 describe('GmailWatcher Initialization Diagnostics', () => {
-    const workdir = path.join(__dirname, 'tmp-auth-test');
+    const workdir = path.join(os.tmpdir(), `tmp-auth-test-${Date.now()}`);
 
     beforeAll(() => {
         if (!fs.existsSync(workdir)) fs.mkdirSync(workdir, { recursive: true });
