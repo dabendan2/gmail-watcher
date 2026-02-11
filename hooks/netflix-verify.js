@@ -138,7 +138,11 @@ async function processMessage(message) {
             saveToHistory(verifyLink);
         } else {
             const pageContent = await page.evaluate(() => document.body.innerText);
-            log(`未找到確認按鈕。摘要: ${pageContent.substring(0, 200).replace(/\n/g, ' ')}...`);
+            if (pageContent.toLowerCase().includes('sign in') || pageContent.includes('Email or mobile number')) {
+                log(`連結已過期（導向登入畫面）`);
+            } else {
+                log(`未找到確認按鈕。摘要: ${pageContent.substring(0, 200).replace(/\n/g, ' ')}...`);
+            }
         }
 
     } catch (error) {
