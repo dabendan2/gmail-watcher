@@ -44,8 +44,8 @@
 複製 `.env.example` 並設定：
 ```env
 PORT=3000
-PROJECT_ID=your-project-id
-SUBSCRIPTION_NAME=your-subscription-id
+GMAIL_TOPIC_NAME=projects/your-project-id/topics/your-topic-name
+GMAIL_SUBSCRIPTION_NAME=your-subscription-name
 ```
 
 ## 執行與部署
