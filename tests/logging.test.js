@@ -26,4 +26,11 @@ describe('Logging Behavior', () => {
         // fs.appendFileSync should NOT be called (no duplicate file write)
         expect(fs.appendFileSync).not.toHaveBeenCalled();
     });
+
+    test('log() should include process PID', () => {
+        watcher.log('Test', 'PID Check');
+        
+        // Should contain [PID:xxx]
+        expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/\[PID:\d+\]/));
+    });
 });
