@@ -74,7 +74,7 @@ describe('GmailWatcher Secure Mock Tests', () => {
         const mockGmail = {
             users: {
                 watch: jest.fn().mockResolvedValue({
-                    data: { expiration: '1234567890' }
+                    data: { expiration: '1234567890', historyId: '12345' }
                 }),
                 messages: {
                     list: jest.fn().mockResolvedValue({ data: { messages: [] } })

@@ -38,9 +38,9 @@ class GmailWatcher {
     // Log to console (captured by service.log)
     console.log(logLine.trim());
 
-    // Log specifically to gmail.log
-    const gmailLogPath = path.join(this.workdir, 'gmail.log');
-    fs.appendFileSync(gmailLogPath, logLine);
+    // Log specifically to gmail.log - REMOVED to avoid duplication
+    // const gmailLogPath = path.join(this.workdir, 'gmail.log');
+    // fs.appendFileSync(gmailLogPath, logLine);
   }
 
   async start() {

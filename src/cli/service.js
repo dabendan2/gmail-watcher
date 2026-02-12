@@ -137,11 +137,11 @@ module.exports = (program) => {
         : (command.parent.parent.opts().workdir || require('os').homedir() + '/.gmail-watcher');
 
       const serviceLog = path.join(workdir, 'service.log');
-      const gmailLog = path.join(workdir, 'gmail.log');
+      // const gmailLog = path.join(workdir, 'gmail.log'); // Removed
       
       const filesToTail = [];
       if (fs.existsSync(serviceLog)) filesToTail.push(serviceLog);
-      if (fs.existsSync(gmailLog)) filesToTail.push(gmailLog);
+      // if (fs.existsSync(gmailLog)) filesToTail.push(gmailLog); // Removed
 
       if (filesToTail.length === 0) {
         console.log('No logs found.');
@@ -165,10 +165,10 @@ module.exports = (program) => {
         : (command.parent.parent.opts().workdir || require('os').homedir() + '/.gmail-watcher');
 
       const serviceLog = path.join(workdir, 'service.log');
-      const gmailLog = path.join(workdir, 'gmail.log');
+      // const gmailLog = path.join(workdir, 'gmail.log');
       
       if (fs.existsSync(serviceLog)) fs.truncateSync(serviceLog, 0);
-      if (fs.existsSync(gmailLog)) fs.truncateSync(gmailLog, 0);
+      // if (fs.existsSync(gmailLog)) fs.truncateSync(gmailLog, 0);
       console.log('Logs cleared.');
     });
 };
