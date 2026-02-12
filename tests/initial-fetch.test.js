@@ -59,6 +59,9 @@ describe('GmailWatcher Initial Fetch Test', () => {
   });
 
   test('start() should fetch initial unread messages and run hooks', async () => {
+    // Mock watch to return historyId
+    watcher.gmail.watch.mockResolvedValue({ historyId: '12345' });
+    
     await watcher.start();
 
     expect(watcher.gmail.listUnreadMessages).toHaveBeenCalledWith(10);

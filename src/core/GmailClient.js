@@ -63,13 +63,14 @@ class GmailClient {
         }
         const { client } = await this.getClient();
         try {
-            return await client.users.watch({
+            const res = await client.users.watch({
                 userId: 'me',
                 requestBody: {
                     topicName: topicName,
                     labelIds: ['INBOX']
                 }
             });
+            return res.data;
         } catch (e) {
             throw new Error(`[Gmail API Error] Watch failed: ${e.message}. Ensure your GCP Topic permissions are set correctly.`);
         }

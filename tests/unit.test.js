@@ -153,7 +153,7 @@ describe('GmailWatcher Unit Tests', () => {
     test('start initializes watch', async () => {
         // Mock internal methods
         watcher.gmail.getClient = jest.fn().mockResolvedValue({ auth: {} });
-        watcher.gmail.watch = jest.fn().mockResolvedValue({});
+        watcher.gmail.watch = jest.fn().mockResolvedValue({ historyId: '12345' });
         watcher.gmail.listUnreadMessages = jest.fn().mockResolvedValue([]);
         
         // Ensure subscription name is set

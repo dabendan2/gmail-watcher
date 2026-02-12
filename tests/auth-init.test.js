@@ -52,7 +52,7 @@ describe('GmailWatcher Initialization Diagnostics', () => {
             client: {}, 
             auth: mockAuth 
         });
-        watcher.gmail.watch = jest.fn().mockResolvedValue({});
+        watcher.gmail.watch = jest.fn().mockResolvedValue({ historyId: '12345' });
         watcher.gmail.listUnreadMessages = jest.fn().mockResolvedValue([]);
 
         await watcher.start();
