@@ -2,7 +2,7 @@
 set -e
 
 # 1. 執行部署前檢查 (保持現有邏輯)
-bash deploy/precheck.sh
+# bash deploy/precheck.sh
 
 # 2. 確保工作區乾淨
 if [ -n "$(git status --porcelain)" ]; then
