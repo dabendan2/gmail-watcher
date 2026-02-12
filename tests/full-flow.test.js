@@ -9,13 +9,13 @@ describe('GmailWatcher Full Flow Verification', () => {
     const testLogDir = path.join(os.tmpdir(), `flow-test-logs-${Date.now()}`);
 
     beforeEach(() => {
-        if (!fs.existsSync(testLogDir)) fs.mkdirSync(testLogDir);
+        if (!fs.existsSync(testLogDir)) fs.mkdirSync(testLogDir, { recursive: true });
+        
+        // Mock appendFile to be safe
+        jest.spyOn(fs, 'appendFileSync').mockImplementation(() => {});
+
         watcher = new GmailWatcher({ logDir: testLogDir });
         watcher.log = jest.fn();
-    });
-
-    afterEach(() => {
-        try { fs.rmSync(testLogDir, { recursive: true, force: true }); } catch (e) {}
     });
 
     test('should fetch full message content and pass it to hooks', async () => {
@@ -23,22 +23,11 @@ describe('GmailWatcher Full Flow Verification', () => {
             { id: 'msg1', snippet: 'Test snippet', payload: { body: { data: 'base64data' } } }
         ];
 
-        // Mock GmailClient behavior
-        jest.spyOn(watcher.gmailClient, 'getClient').mockResolvedValue({ 
-            client: { 
-                users: { 
-                    history: { 
-                        list: jest.fn().mockResolvedValue({ 
-                            data: { history: [{ messagesAdded: [{ message: { id: 'msg1' } }] }] } 
-                        }) 
-                    } 
-                } 
-            }, 
-            auth: {} 
-        });
+        // Mock GmailClient behavior on watcher.gmail property
+        watcher.gmail.getHistory = jest.fn().mockResolvedValue([{ id: 'msg1' }]);
         
         // Mock fetchFullMessages to return our specific content
-        const fetchSpy = jest.spyOn(watcher.gmailClient, 'fetchFullMessages')
+        const fetchSpy = watcher.gmail.fetchFullMessages = jest.fn()
             .mockResolvedValue(mockMessages);
             
         // Mock HookRunner to intercept what it receives
@@ -47,13 +36,13 @@ describe('GmailWatcher Full Flow Verification', () => {
 
         // Simulate incoming notification
         const message = {
-            data: Buffer.from(JSON.stringify({ historyId: 'new-history-id' })).toString('base64'),
-            ack: jest.fn()
+            data: Buffer.from(JSON.stringify({ historyId: 'new-history-id', emailAddress: 'me' })),
+            ack: jest.fn(),
+            nack: jest.fn(),
+            id: 'msg-id-flow'
         };
-        watcher.lastHistoryId = 'old-history-id';
 
         await watcher.handleMessage(message);
-        await watcher.processQueue;
 
         // Verification 1: fetchFullMessages was called with correct ID
         expect(fetchSpy).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'msg1' })]));

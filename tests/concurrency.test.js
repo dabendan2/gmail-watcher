@@ -21,10 +21,9 @@ describe('Watcher Concurrency', () => {
         watcher = new GmailWatcher({ logDir: testLogDir });
         watcher.log = jest.fn();
 
-        // Mock GmailClient to return messages immediately
-        jest.spyOn(watcher.gmailClient, 'getClient').mockResolvedValue({ client: {}, auth: {} });
-        jest.spyOn(watcher.gmailClient, 'getHistory').mockResolvedValue([{ id: 'msg1' }]);
-        jest.spyOn(watcher.gmailClient, 'fetchFullMessages').mockResolvedValue([{ id: 'msg1' }]);
+        // Mock GmailClient behavior on watcher.gmail property
+        watcher.gmail.getHistory = jest.fn().mockResolvedValue([{ id: 'msg1' }]);
+        watcher.gmail.fetchFullMessages = jest.fn().mockResolvedValue([{ id: 'msg1' }]);
         watcher.lastHistoryId = '123';
     });
 
@@ -53,10 +52,23 @@ describe('Watcher Concurrency', () => {
         });
 
         // Simulate 2 concurrent messages
-        const msg1 = { data: Buffer.from(JSON.stringify({ historyId: 'A' })).toString('base64'), ack: jest.fn() };
-        const msg2 = { data: Buffer.from(JSON.stringify({ historyId: 'B' })).toString('base64'), ack: jest.fn() };
+        const msg1 = { 
+            data: Buffer.from(JSON.stringify({ historyId: 'A', emailAddress: 'me' })), 
+            ack: jest.fn(),
+            nack: jest.fn(),
+            id: 'msg-1'
+        };
+        const msg2 = { 
+            data: Buffer.from(JSON.stringify({ historyId: 'B', emailAddress: 'me' })), 
+            ack: jest.fn(),
+            nack: jest.fn(),
+            id: 'msg-2' 
+        };
 
-        // Fire both without awaiting immediately (simulate concurrency)
+        // Fire both without awaiting immediately (simulate concurrency from PubSub)
+        // Note: In Node.js, these will run synchronously until the first await.
+        // We need to ensure that the SECOND one waits for the FIRST one to finish processing.
+        
         const p1 = watcher.handleMessage(msg1);
         const p2 = watcher.handleMessage(msg2);
 
@@ -64,9 +76,6 @@ describe('Watcher Concurrency', () => {
         await new Promise(resolve => spawnEvents.once('spawned', resolve));
 
         // At this point, if sequential, spawnCount should be 1.
-        // If parallel, it might race to 2, or be 1 but the second call initiates soon.
-        // We assert strictly: logic should wait.
-        
         expect(spawnCount).toBe(1);
 
         // Allow microtasks to process to ensure the second one had a chance to start if it wasn't blocked

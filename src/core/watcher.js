@@ -27,6 +27,7 @@ class GmailWatcher {
       authClient: this.gmail.auth
     });
     this.subscription = null;
+    this.messageQueue = Promise.resolve(); // Queue for sequential processing
   }
 
   log(source, message) {
@@ -85,30 +86,34 @@ class GmailWatcher {
   }
 
   async handleMessage(message) {
-    this.log('Watcher', `Received message ID: ${message.id}`);
-    
-    try {
-      const data = JSON.parse(message.data.toString());
-      const { emailAddress, historyId } = data;
-
-      this.log('Watcher', `Processing update for ${emailAddress} (History ID: ${historyId})`);
-
-      // Fetch changes since historyId
-      const messageIds = await this.gmail.getHistory(historyId);
+    this.messageQueue = this.messageQueue.then(async () => {
+      this.log('Watcher', `Received message ID: ${message.id}`);
       
-      if (messageIds.length > 0) {
-        this.log('Watcher', `Found ${messageIds.length} new messages.`);
-        const fullMessages = await this.gmail.fetchFullMessages(messageIds);
-        await this.hookRunner.run(fullMessages);
-      } else {
-        this.log('Watcher', 'No new messages found in history.');
+      try {
+        const data = JSON.parse(message.data.toString());
+        const { emailAddress, historyId } = data;
+  
+        this.log('Watcher', `Processing update for ${emailAddress} (History ID: ${historyId})`);
+  
+        // Fetch changes since historyId
+        const messageIds = await this.gmail.getHistory(historyId);
+        
+        if (messageIds.length > 0) {
+          this.log('Watcher', `Found ${messageIds.length} new messages.`);
+          const fullMessages = await this.gmail.fetchFullMessages(messageIds);
+          await this.hookRunner.run(fullMessages);
+        } else {
+          this.log('Watcher', 'No new messages found in history.');
+        }
+  
+        message.ack();
+      } catch (error) {
+        this.log('Watcher', `Handle message failed: ${error.message}`);
+        message.nack();
       }
+    });
 
-      message.ack();
-    } catch (error) {
-      this.log('Watcher', `Handle message failed: ${error.message}`);
-      message.nack();
-    }
+    return this.messageQueue;
   }
 
   async stop() {

@@ -23,7 +23,20 @@ describe('GmailWatcher Initialization Diagnostics', () => {
         const mockSubscription = { on: jest.fn() };
         
         // Mock PubSub instance methods
-        PubSub.prototype.subscription = jest.fn().mockReturnValue(mockSubscription);
+        // When new PubSub is called, it returns an object.
+        // We can mock the implementation of the constructor or prototype.
+        // jest.mock('@google-cloud/pubsub') returns automatic mock where PubSub is a mock constructor.
+        
+        // We need to spy on the constructor to capture the instance or mock implementation.
+        PubSub.mockImplementation((options) => {
+            return {
+                projectId: options.projectId,
+                authClient: options.authClient,
+                subscription: jest.fn().mockReturnValue(mockSubscription),
+                // Add auth property if the test expects it (though PubSub usually doesn't expose auth like this directly unless we mock it so)
+                auth: { authClient: options.authClient }
+            };
+        });
 
         const watcher = new GmailWatcher({
             projectId: 'test-project',
@@ -34,19 +47,20 @@ describe('GmailWatcher Initialization Diagnostics', () => {
             tokenPath: path.join(workdir, 'token.json')
         });
 
-        // Ensure pubsub.auth exists for the test
-        watcher.pubsub.auth = {};
-
         // Mock GmailClient methods
         watcher.gmail.getClient = jest.fn().mockResolvedValue({ 
             client: {}, 
             auth: mockAuth 
         });
         watcher.gmail.watch = jest.fn().mockResolvedValue({});
+        watcher.gmail.listUnreadMessages = jest.fn().mockResolvedValue([]);
 
         await watcher.start();
 
-        // Check if pubsub.auth.authClient was set to mockAuth
-        expect(watcher.pubsub.auth.authClient).toBe(mockAuth);
+        // Check if pubsub was re-initialized with new auth
+        // The last call to PubSub constructor should have authClient: mockAuth
+        expect(PubSub).toHaveBeenLastCalledWith(expect.objectContaining({
+            authClient: mockAuth
+        }));
     });
 });

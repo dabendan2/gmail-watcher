@@ -13,6 +13,10 @@ describe('GmailWatcher PubSub Tests', () => {
     const testLogDir = path.join(__dirname, 'pubsub-test-logs');
 
     beforeAll(() => {
+        // Mock fs to prevent actual file writes
+        jest.spyOn(fs, 'appendFileSync').mockImplementation(() => {});
+        jest.spyOn(fs, 'mkdirSync').mockImplementation(() => {});
+
         watcher = new GmailWatcher({
             gitSha: 'test-sha',
             port: PORT,
@@ -32,27 +36,24 @@ describe('GmailWatcher PubSub Tests', () => {
 
     test('should process valid PubSub message and trigger processing', async () => {
         const testPayload = { emailAddress: 'test@example.com', historyId: '9999' };
+        // message.data is buffer
         const message = {
-            data: Buffer.from(JSON.stringify(testPayload)).toString('base64'),
-            ack: jest.fn()
+            data: Buffer.from(JSON.stringify(testPayload)),
+            ack: jest.fn(),
+            id: 'msg-id-pubsub'
         };
 
         // Mock dependencies
-        jest.spyOn(watcher.gmailClient, 'getClient').mockResolvedValue({ 
-            client: { 
-                users: { 
-                    history: { list: jest.fn().mockResolvedValue({}) },
-                    messages: { get: jest.fn() }
-                } 
-            }, 
-            auth: {} 
-        });
-        jest.spyOn(watcher.gmailClient, 'fetchFullMessages').mockResolvedValue([]);
+        // Use watcher.gmail instead of watcher.gmailClient
+        // And we need to mock the methods directly if they are instance methods
+        watcher.gmail.getHistory = jest.fn().mockResolvedValue([]);
+        watcher.gmail.fetchFullMessages = jest.fn().mockResolvedValue([]);
+        // hookRunner.run is already mocked or spyOn-able
         jest.spyOn(watcher.hookRunner, 'run').mockResolvedValue();
 
         await watcher.handleMessage(message);
 
-        expect(watcher.log).toHaveBeenCalledWith('Watcher', expect.stringContaining('Notification received'));
+        expect(watcher.log).toHaveBeenCalledWith('Watcher', expect.stringContaining('Processing update'));
         expect(message.ack).toHaveBeenCalled();
     });
 

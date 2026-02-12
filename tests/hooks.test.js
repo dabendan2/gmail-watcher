@@ -11,6 +11,10 @@ describe('GmailWatcher Hooks Behavior', () => {
     const testLogDir = path.join(__dirname, 'test-logs-behavior');
 
     beforeEach(() => {
+        // Mock fs.appendFileSync to prevent actual file writing from HookRunner's logger
+        jest.spyOn(fs, 'appendFileSync').mockImplementation(() => {});
+        jest.spyOn(fs, 'mkdirSync').mockImplementation(() => {});
+        
         watcher = new GmailWatcher({ logDir: testLogDir });
         jest.spyOn(watcher, 'log').mockImplementation(() => {});
         jest.spyOn(fs, 'readdirSync').mockReturnValue(['hook1.js', 'hook2.js']);

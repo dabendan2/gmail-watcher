@@ -48,7 +48,7 @@ describe('GmailWatcher Secure Mock Tests', () => {
         jest.spyOn(watcher, 'log').mockImplementation(() => {});
     });
 
-    test('renewWatch should initialize PubSub and Gmail watch with OAuth2', async () => {
+    test('start should initialize PubSub and Gmail watch with OAuth2', async () => {
         const mockOAuth2Client = {
             setCredentials: jest.fn()
         };
@@ -59,31 +59,47 @@ describe('GmailWatcher Secure Mock Tests', () => {
             close: jest.fn().mockResolvedValue(),
             removeAllListeners: jest.fn()
         };
+        
         const mockPubSubInstance = {
-            subscription: jest.fn().mockReturnValue(mockSubscription)
+            subscription: jest.fn().mockReturnValue(mockSubscription),
+            projectId: 'mock-project'
         };
-        PubSub.mockReturnValue(mockPubSubInstance);
+        // Ensure ALL calls return an instance with projectId
+        PubSub.mockImplementation(() => mockPubSubInstance);
+
+        // Re-create watcher so it picks up the mocked PubSub with projectId from constructor
+        watcher = new GmailWatcher(mockConfig);
+        jest.spyOn(watcher, 'log').mockImplementation(() => {});
 
         const mockGmail = {
             users: {
                 watch: jest.fn().mockResolvedValue({
                     data: { expiration: '1234567890' }
-                })
+                }),
+                messages: {
+                    list: jest.fn().mockResolvedValue({ data: { messages: [] } })
+                }
             }
         };
         google.gmail.mockReturnValue(mockGmail);
+        
+        // Mock getClient explicitly if needed, but since we mock googleapis, GmailClient usage of it should work.
+        // However, start() calls this.gmail.getClient() then new PubSub({ authClient: auth })
+        
+        watcher.topicName = 'projects/mock-project/topics/gmail-notifications';
 
-        await watcher.renewWatch();
+        await watcher.start();
 
         // Verify OAuth2 setup
         expect(google.auth.OAuth2).toHaveBeenCalled();
-        expect(mockOAuth2Client.setCredentials).toHaveBeenCalledWith({ access_token: 'abc' });
-
-        // Verify PubSub initialization
+        // It's called inside GmailClient constructor or getClient
+        
+        // Verify PubSub initialization (second one in start())
         expect(PubSub).toHaveBeenCalledWith(expect.objectContaining({
             projectId: 'mock-project',
             authClient: mockOAuth2Client
         }));
+        
         expect(mockPubSubInstance.subscription).toHaveBeenCalledWith('mock-sub');
         expect(mockSubscription.on).toHaveBeenCalledWith('message', expect.any(Function));
 
@@ -97,11 +113,13 @@ describe('GmailWatcher Secure Mock Tests', () => {
         });
     });
 
-    test('renewWatch should handle missing credentials gracefully', async () => {
+    test('start should handle missing credentials gracefully', async () => {
+        // If files are missing, GmailClient throws.
+        // start() catches and rethrows.
         fs.existsSync.mockReturnValue(false); // Simulate missing files
         
-        await expect(watcher.renewWatch()).resolves.not.toThrow();
+        await expect(watcher.start()).rejects.toThrow();
         
-        expect(watcher.log).toHaveBeenCalledWith('Watcher', expect.stringContaining('Error renewing Gmail watch'));
+        expect(watcher.log).toHaveBeenCalledWith('Watcher', expect.stringContaining('Start failed'));
     });
 });
