@@ -10,7 +10,7 @@
 
 ```bash
 # 1. 下載專案
-git clone https://github.com/your-username/gmail-watcher.git
+git clone https://github.com/dabendan2/gmail-watcher.git
 cd gmail-watcher
 
 # 2. 安裝相依套件
