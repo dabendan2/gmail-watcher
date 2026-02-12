@@ -4,6 +4,26 @@
 
 ---
 
+## 📦 安裝 (Installation)
+
+請依序執行以下指令進行安裝：
+
+```bash
+# 1. 下載專案
+git clone https://github.com/your-username/gmail-watcher.git
+cd gmail-watcher
+
+# 2. 安裝相依套件
+npm install
+
+# 3. 連結全域指令 (讓 gmail-watcher 指令生效)
+npm link
+```
+
+完成後，您即可在終端機直接使用 `gmail-watcher` 指令。
+
+---
+
 ## 🚀 快速上手 (Quick Start)
 
 ### 1. GCP 雲端設定
