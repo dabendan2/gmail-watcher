@@ -34,7 +34,8 @@ class GmailWatcher {
   log(source, message) {
     const now = new Date();
     const timestamp = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
-    const logLine = `[${timestamp}] [${source}] ${message}\n`;
+    const pid = process.pid;
+    const logLine = `[${timestamp}] [${pid}] [${source}] ${message}\n`;
     
     // Log to console (captured by service.log)
     console.log(logLine.trim());
