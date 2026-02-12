@@ -12,11 +12,13 @@ class HookRunner {
      * @param {string} hooksDir - Directory containing hook scripts.
      * @param {string} logDir - Directory for logs (passed as env var to hooks).
      * @param {Function} logger - Logging function (e.g., watcher.log).
+     * @param {number} [timeoutMs=180000] - Timeout in ms (default 3 mins).
      */
-    constructor(hooksDir, logDir, logger) {
+    constructor(hooksDir, logDir, logger, timeoutMs = 3 * 60 * 1000) {
         this.hooksDir = hooksDir;
         this.logDir = logDir;
         this.logger = logger;
+        this.timeoutMs = timeoutMs;
     }
 
     /**
@@ -89,13 +91,21 @@ class HookRunner {
                     child.stdin.write(payload);
                     child.stdin.end();
                     
-                    // Timeout after 3 minutes
+                    // Timeout logic
                     setTimeout(() => {
-                        if (!child.killed) {
-                            this.logger(file, 'Timed out, killing...');
-                            child.kill();
+                        if (!child.killed && child.exitCode === null) {
+                            this.logger(file, 'Timed out, sending SIGTERM...');
+                            child.kill('SIGTERM');
+
+                            // Force kill if it doesn't exit within 5 seconds
+                            setTimeout(() => {
+                                if (child.exitCode === null) {
+                                    this.logger(file, 'Still alive, sending SIGKILL...');
+                                    child.kill('SIGKILL');
+                                }
+                            }, 5000); // Don't block event loop
                         }
-                    }, 3 * 60 * 1000); 
+                    }, this.timeoutMs); 
                 });
 
             } catch (error) {
