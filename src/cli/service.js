@@ -33,45 +33,71 @@ module.exports = (program) => {
       
       if (options.daemon) {
         // --- DAEMON MODE ---
-        const logStream = fs.openSync(logFile, 'a');
+        const logFd = fs.openSync(logFile, 'a');
         const child = spawn('node', [scriptPath, '--workdir', workdir], {
           detached: true,
-          stdio: ['ignore', logStream, logStream]
+          stdio: ['ignore', logFd, logFd]
+        });
+        
+        // Watch log file for startup status
+        console.log('Starting background service...');
+        
+        const checkPromise = new Promise((resolve, reject) => {
+            let logs = '';
+            // Tail the log file to check for success/failure
+            const tail = spawn('tail', ['-n', '0', '-f', logFile]);
+            
+            const timeout = setTimeout(() => {
+                tail.kill();
+                // Assume success if no crash in 3s
+                resolve(); 
+            }, 3000);
+
+            tail.stdout.on('data', (data) => {
+                const chunk = data.toString();
+                logs += chunk;
+                if (chunk.includes('Listening for messages') || chunk.includes('Watcher started')) {
+                    clearTimeout(timeout);
+                    tail.kill();
+                    resolve();
+                }
+                // Check for known error patterns
+                if (chunk.includes('CRITICAL') || chunk.includes('Start failed') || chunk.includes('Error:')) {
+                    clearTimeout(timeout);
+                    tail.kill();
+                    reject(new Error(`Daemon reported error: ${chunk}`));
+                }
+            });
+
+            // Also check if child dies immediately
+            child.on('exit', (code) => {
+                if (code !== 0) {
+                    clearTimeout(timeout);
+                    tail.kill();
+                    // Read recent logs to give context
+                    try {
+                        const recentLogs = fs.readFileSync(logFile, 'utf8').slice(-500);
+                        reject(new Error(`Process exited with code ${code}. Logs:\n${recentLogs}`));
+                    } catch(e) {
+                        reject(new Error(`Process exited with code ${code}`));
+                    }
+                }
+            });
         });
 
-        // Use a temporary pipe to catch immediate startup errors
-        let startupError = '';
-        const checkChild = spawn('node', [scriptPath, '--workdir', workdir], {
-          stdio: ['ignore', 'pipe', 'pipe']
-        });
-
-        const errorPromise = new Promise((resolve) => {
-          checkChild.stderr.on('data', (data) => {
-            startupError += data.toString();
-          });
-          checkChild.on('exit', (code) => {
-            resolve(code);
-          });
-          // Timeout after 2 seconds - if it's still running, assume basic init passed
-          setTimeout(() => {
-            checkChild.kill();
-            resolve(0);
-          }, 2000);
-        });
-
-        const exitCode = await errorPromise;
-        if (exitCode !== 0 && startupError) {
-          console.error('\n❌ 啟動失敗！日誌摘要：');
-          console.error('----------------------------------------');
-          console.error(startupError.trim());
-          console.error('----------------------------------------');
-          console.error('請根據上方提示修正後再試。');
-          process.exit(1);
+        try {
+            await checkPromise;
+            child.unref();
+            fs.writeFileSync(pidFile, String(child.pid));
+            console.log(`✅ Service started in background (PID: ${child.pid})`);
+            process.exit(0);
+        } catch (err) {
+            console.error('\n❌ 啟動失敗！');
+            console.error(err.message);
+            // Kill child if it's still alive (e.g. hung but reported error)
+            try { process.kill(child.pid, 'SIGKILL'); } catch (e) {}
+            process.exit(1);
         }
-
-        child.unref();
-        fs.writeFileSync(pidFile, String(child.pid));
-        console.log(`✅ Service started in background (PID: ${child.pid})`);
       } else {
         // --- FOREGROUND MODE ---
         console.log('Starting service in foreground... (Ctrl+C to stop)');
