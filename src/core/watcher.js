@@ -32,9 +32,9 @@ class GmailWatcher {
   }
 
   log(source, message) {
-    const timestamp = new Date().toISOString();
-    const pid = process.pid;
-    const logLine = `[${timestamp}] [PID:${pid}] [${source}] ${message}\n`;
+    const now = new Date();
+    const timestamp = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+    const logLine = `[${timestamp}] [${source}] ${message}\n`;
     
     // Log to console (captured by service.log)
     console.log(logLine.trim());
@@ -96,17 +96,15 @@ class GmailWatcher {
 
   async handleMessage(message) {
     this.messageQueue = this.messageQueue.then(async () => {
-      this.log('Watcher', `Received message ID: ${message.id}`);
-      
       try {
         const data = JSON.parse(message.data.toString());
-        const { emailAddress, historyId } = data;
+        const { historyId } = data;
         
         if (!historyId) {
             throw new Error('Missing historyId in message data');
         }
   
-        this.log('Watcher', `Processing update for ${emailAddress} (History ID: ${historyId})`);
+        this.log('Watcher', `Processing update (History ID: ${historyId})`);
   
         // Fetch changes since lastHistoryId (or current if not set)
         const startId = this.lastHistoryId || historyId;
