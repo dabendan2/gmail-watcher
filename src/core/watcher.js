@@ -60,6 +60,9 @@ class GmailWatcher {
       if (watchRes.historyId) {
           this.lastHistoryId = watchRes.historyId;
           this.log('Watcher', `Initial history ID: ${this.lastHistoryId}`);
+      } else {
+          this.log('Watcher', `CRITICAL: Missing historyId in watch response: ${JSON.stringify(watchRes)}`);
+          throw new Error('Failed to obtain initial historyId from Gmail API');
       }
       this.log('Watcher', `Gmail watch set for topic: ${this.topicName}`);
 
