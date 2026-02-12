@@ -54,10 +54,12 @@ describe('GmailWatcher Skip Logic', () => {
             id: 'msg-with-history'
         };
 
+        watcher.lastHistoryId = '10000'; // Setup
+
         await watcher.handleMessage(message);
 
         expect(watcher.log).toHaveBeenCalledWith('Watcher', expect.stringContaining('Processing update'));
         expect(message.ack).toHaveBeenCalled();
-        expect(watcher.gmail.getHistory).toHaveBeenCalledWith('12345');
+        expect(watcher.gmail.getHistory).toHaveBeenCalledWith('10000');
     });
 });

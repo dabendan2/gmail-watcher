@@ -106,6 +106,9 @@ describe('GmailWatcher Unit Tests', () => {
         watcher.gmail.fetchFullMessages = jest.fn().mockResolvedValue([{ id: 'msg1' }]);
         watcher.hookRunner.run = jest.fn().mockResolvedValue();
 
+        // Setup lastHistoryId so that getHistory is called
+        watcher.lastHistoryId = '100';
+
         await watcher.handleMessage(message);
 
         expect(message.ack).toHaveBeenCalled();

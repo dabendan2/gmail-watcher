@@ -23,6 +23,9 @@ describe('GmailWatcher Full Flow Verification', () => {
             { id: 'msg1', snippet: 'Test snippet', payload: { body: { data: 'base64data' } } }
         ];
 
+        // Setup initial history
+        watcher.lastHistoryId = 'old-history-id';
+
         // Mock GmailClient behavior on watcher.gmail property
         watcher.gmail.getHistory = jest.fn().mockResolvedValue([{ id: 'msg1' }]);
         

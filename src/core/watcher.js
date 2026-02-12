@@ -28,6 +28,7 @@ class GmailWatcher {
     });
     this.subscription = null;
     this.messageQueue = Promise.resolve(); // Queue for sequential processing
+    this.lastHistoryId = null;
   }
 
   log(source, message) {
@@ -55,7 +56,11 @@ class GmailWatcher {
         authClient: auth
       });
 
-      await this.gmail.watch(this.topicName);
+      const watchRes = await this.gmail.watch(this.topicName);
+      if (watchRes.historyId) {
+          this.lastHistoryId = watchRes.historyId;
+          this.log('Watcher', `Initial history ID: ${this.lastHistoryId}`);
+      }
       this.log('Watcher', `Gmail watch set for topic: ${this.topicName}`);
 
       // 1.5. Process initial unread messages (top 10)
@@ -92,11 +97,34 @@ class GmailWatcher {
       try {
         const data = JSON.parse(message.data.toString());
         const { emailAddress, historyId } = data;
+        
+        if (!historyId) {
+            throw new Error('Missing historyId in message data');
+        }
   
         this.log('Watcher', `Processing update for ${emailAddress} (History ID: ${historyId})`);
   
-        // Fetch changes since historyId
-        const messageIds = await this.gmail.getHistory(historyId);
+        // Fetch changes since lastHistoryId (or current if not set)
+        const startId = this.lastHistoryId || historyId;
+        
+        // If startId is same as new ID, there's nothing to fetch (or it's the very first message and we have no history)
+        // But Google Docs say: historyId in push notification is the *new* ID.
+        // So we want changes from *last* to *new*.
+        
+        // Only fetch if we have a previous ID and it's different
+        let messageIds = [];
+        if (startId && startId !== historyId) {
+             messageIds = await this.gmail.getHistory(startId);
+        } else if (!this.lastHistoryId) {
+             // Fallback: if we don't have last ID (restart?), maybe just fetch new ID?
+             // Actually, getHistory(historyId) returns changes *after* historyId.
+             // If we pass the NEW historyId, we get nothing.
+             // So if we missed the init, we might miss this batch.
+             this.log('Watcher', 'No previous history ID found. Skipping history sync for this batch.');
+        }
+
+        // Update lastHistoryId
+        this.lastHistoryId = historyId;
         
         if (messageIds.length > 0) {
           this.log('Watcher', `Found ${messageIds.length} new messages.`);
