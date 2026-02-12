@@ -11,9 +11,3 @@ process.on('SIGTERM', () => {
 setInterval(() => {
     console.log('Still alive...');
 }, 500);
-
-// Safety net: Self-destruct after 60 seconds to prevent permanent zombies in CI/Dev
-setTimeout(() => {
-    console.log('Self-destructing...');
-    process.exit(0);
-}, 60000);
