@@ -108,7 +108,7 @@ describe('GmailWatcher Secure Mock Tests', () => {
             userId: 'me',
             requestBody: {
                 topicName: `projects/mock-project/topics/gmail-notifications`,
-                // labelIds: ['INBOX'] // REMOVED
+                labelIds: ['INBOX']
             }
         });
     });

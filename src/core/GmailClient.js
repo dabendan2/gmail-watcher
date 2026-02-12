@@ -67,7 +67,7 @@ class GmailClient {
                 userId: 'me',
                 requestBody: {
                     topicName: topicName,
-                    // labelIds: ['INBOX'] // Listen to ALL changes
+                    labelIds: ['INBOX']
                 }
             });
         } catch (e) {
