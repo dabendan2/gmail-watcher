@@ -18,6 +18,9 @@ describe('Watcher Concurrency', () => {
         jest.spyOn(fs, 'mkdirSync').mockImplementation(() => {});
         jest.spyOn(fs, 'appendFileSync').mockImplementation(() => {});
         
+        // Fix: Mock log on prototype so HookRunner gets the mocked version
+        jest.spyOn(GmailWatcher.prototype, 'log').mockImplementation(() => {});
+
         watcher = new GmailWatcher({ logDir: testLogDir });
         watcher.log = jest.fn();
 
