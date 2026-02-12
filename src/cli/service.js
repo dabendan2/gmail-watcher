@@ -130,6 +130,7 @@ module.exports = (program) => {
   service.command('logs')
     .description('Tail logs (service.log + gmail.log)')
     .option('-f, --follow', 'Follow log output')
+    .option('-n, --lines <number>', 'Output the last N lines')
     .action((options, command) => {
       const workdir = command.context && command.context.workdir 
         ? command.context.workdir 
@@ -148,7 +149,11 @@ module.exports = (program) => {
       }
       
       const { spawn } = require('child_process');
-      const args = options.follow ? ['-f', ...filesToTail] : filesToTail;
+      const args = [];
+      if (options.lines) args.push('-n', options.lines);
+      if (options.follow) args.push('-f');
+      args.push(...filesToTail);
+      
       spawn('tail', args, { stdio: 'inherit' });
     });
 

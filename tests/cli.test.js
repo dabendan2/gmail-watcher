@@ -44,4 +44,16 @@ describe('CLI Integration Tests', () => {
         const output = run('-v');
         expect(output.trim().length).toBeGreaterThan(0);
     });
+
+    test('service logs should accept --lines option', () => {
+        // Create a dummy log file
+        fs.writeFileSync(path.join(testWorkdir, 'service.log'), 'log1\nlog2\nlog3\n');
+        
+        // This should fail currently because --lines is not defined
+        const output = run('service logs --lines 1');
+        
+        // Commander throws error for unknown options
+        // If it fails, output will contain "error: unknown option"
+        expect(output).not.toContain('error: unknown option');
+    });
 });
